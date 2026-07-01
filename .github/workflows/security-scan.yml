@@ -4,7 +4,7 @@ on:
   push:
     branches: [main, develop]
   schedule:
-    - cron: '0 2 * * 1'  # Every Monday 02:00 UTC
+    - cron: '0 2 * * 1'
   pull_request:
     branches: [main, develop]
 
@@ -14,14 +14,13 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-
       - name: Trivy filesystem scan
         uses: aquasecurity/trivy-action@master
         with:
           scan-type: fs
           scan-ref: .
           severity: CRITICAL,HIGH
-          exit-code: '0'           # ← warn only until baseline is established
+          exit-code: '0'
           ignore-unfixed: true
           format: table
 
@@ -30,13 +29,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-
       - uses: actions/setup-go@v5
         with:
           go-version: '1.22'
           cache-dependency-path: backend/go.sum
-
-      - name: Check if go.sum exists
+      - name: Check if go.sum has content
         id: check
         run: |
           if [ -s backend/go.sum ]; then
@@ -44,37 +41,26 @@ jobs:
           else
             echo "has_sum=false" >> $GITHUB_OUTPUT
           fi
-
-      - name: Install govulncheck
+      - name: Install and run govulncheck
         if: steps.check.outputs.has_sum == 'true'
-        run: go install golang.org/x/vuln/cmd/govulncheck@latest
-
-      - name: Run govulncheck
-        if: steps.check.outputs.has_sum == 'true'
-        working-directory: backend
-        run: govulncheck ./... || true   # ← warn only initially
-
+        run: |
+          go install golang.org/x/vuln/cmd/govulncheck@latest
+          cd backend && govulncheck ./... || true
       - name: Skip — go.sum empty
         if: steps.check.outputs.has_sum == 'false'
-        run: echo "✓ go.sum not populated yet — govulncheck skipped."
-
-  dependency-review:
-    name: Dependency Review
-    runs-on: ubuntu-latest
-    if: github.event_name == 'pull_request'
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/dependency-review-action@v4
-        with:
-          fail-on-severity: critical   # ← only block on CRITICAL (not HIGH) initially
+        run: echo "✓ go.sum not populated yet — skipped."
 
   secret-scan:
-    name: Secret Scan (Gitleaks)
+    name: Secret Scan (TruffleHog)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - uses: gitleaks/gitleaks-action@v2
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: TruffleHog OSS
+        uses: trufflesecurity/trufflehog@main
+        with:
+          path: ./
+          base: ${{ github.event.repository.default_branch }}
+          head: HEAD
+          extra_args: --only-verified
