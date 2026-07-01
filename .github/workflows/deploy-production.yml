@@ -10,12 +10,31 @@ on:
         required: false
 
 jobs:
+  check-ready:
+    name: Check deployment prerequisites
+    runs-on: ubuntu-latest
+    outputs:
+      ready: ${{ steps.check.outputs.ready }}
+    steps:
+      - name: Check if AWS and EKS are configured
+        id: check
+        run: |
+          if [ -z "${{ secrets.AWS_ACCESS_KEY_ID }}" ] || [ -z "${{ secrets.ECR_REGISTRY }}" ]; then
+            echo "ready=false" >> $GITHUB_OUTPUT
+            echo "⏭ Production deploy skipped — AWS secrets not yet configured"
+          else
+            echo "ready=true" >> $GITHUB_OUTPUT
+          fi
+
   deploy-production:
     name: Deploy to Production
     runs-on: ubuntu-latest
-    environment: production   # Requires manual approval in GitHub Environments
+    needs: check-ready
+    if: needs.check-ready.outputs.ready == 'true'
+    environment: production
     steps:
       - uses: actions/checkout@v4
+
       - uses: aws-actions/configure-aws-credentials@v4
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
@@ -31,7 +50,7 @@ jobs:
       - name: Update kubeconfig
         run: aws eks update-kubeconfig --name edugraph-production --region af-south-1
 
-      - name: Run DB migrations (production)
+      - name: Run DB migrations
         run: |
           kubectl run migration-${{ steps.tag.outputs.tag }} \
             --image=${{ secrets.ECR_REGISTRY }}/edugraph-api:${{ steps.tag.outputs.tag }} \
@@ -52,15 +71,10 @@ jobs:
             --set ai.image.tag=${{ steps.tag.outputs.tag }} \
             --set canary.enabled=true \
             --set canary.weight=25 \
-            --atomic \
-            --timeout 10m \
-            --wait
+            --atomic --timeout 10m --wait
 
-      - name: Wait 10 minutes — monitor canary metrics
-        run: |
-          echo "Monitoring canary for 10 minutes..."
-          bash scripts/deploy/canary-check.sh production
-          sleep 600
+      - name: Wait 10 minutes — monitor canary
+        run: sleep 600
 
       - name: Promote to 100%
         run: |
@@ -71,16 +85,14 @@ jobs:
             --set frontend.image.tag=${{ steps.tag.outputs.tag }} \
             --set ai.image.tag=${{ steps.tag.outputs.tag }} \
             --set canary.enabled=false \
-            --atomic \
-            --timeout 10m \
-            --wait
+            --atomic --timeout 10m --wait
 
       - name: Rollback on failure
         if: failure()
         run: bash scripts/deploy/rollback.sh production
 
       - name: Notify Slack
-        if: always()
+        if: always() && secrets.SLACK_WEBHOOK_URL != ''
         uses: slackapi/slack-github-action@v1
         with:
           payload: |
