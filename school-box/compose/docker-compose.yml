@@ -1,0 +1,102 @@
+version: '3.9'
+# School Box — runs entirely offline on local school network
+# No internet required after initial setup
+
+services:
+  api:
+    image: ${ECR_REGISTRY}/edugraph-api:${IMAGE_TAG}
+    restart: unless-stopped
+    ports: ['8080:8080']
+    environment:
+      - APP_ENV=school-box
+      - POSTGRES_HOST=postgres
+      - NEO4J_URI=bolt://neo4j:7687
+      - REDIS_URL=redis://redis:6379
+      - AI_SERVICE_URL=http://ai-service:8000
+      - SCHOOL_BOX_ID=${SCHOOL_BOX_ID}
+      - SCHOOL_ID=${SCHOOL_ID}
+    env_file: ../.env.school-box
+    depends_on:
+      postgres: { condition: service_healthy }
+      neo4j:    { condition: service_healthy }
+      redis:    { condition: service_healthy }
+
+  ai-service:
+    image: ${ECR_REGISTRY}/edugraph-ai:${IMAGE_TAG}
+    restart: unless-stopped
+    ports: ['8000:8000']
+    environment:
+      - APP_ENV=school-box
+      - OLLAMA_HOST=http://ollama:11434
+      - OFFLINE_MODE=true
+    depends_on: [ollama]
+
+  postgres:
+    image: pgvector/pgvector:pg16
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: edugraph
+      POSTGRES_USER: edugraph
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U edugraph']
+      interval: 10s; timeout: 5s; retries: 5
+
+  neo4j:
+    image: neo4j:5.18-community
+    restart: unless-stopped
+    environment:
+      NEO4J_AUTH: neo4j/${NEO4J_PASSWORD}
+      NEO4J_dbms_memory_heap_max__size: 1g
+      NEO4J_dbms_memory_pagecache_size: 512m
+    volumes:
+      - neo4j_data:/data
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    volumes: [redis_data:/data]
+    command: redis-server --maxmemory 256mb --maxmemory-policy allkeys-lru
+
+  ollama:
+    image: ollama/ollama:latest
+    restart: unless-stopped
+    volumes:
+      - ollama_models:/root/.ollama
+    # Pre-pull models on first start: ollama pull qwen2.5:7b-instruct-q4_K_M
+
+  sync-agent:
+    image: ${ECR_REGISTRY}/edugraph-sync-agent:${IMAGE_TAG}
+    restart: unless-stopped
+    environment:
+      - CLOUD_SYNC_ENDPOINT=${CLOUD_SYNC_URL}
+      - SCHOOL_BOX_ID=${SCHOOL_BOX_ID}
+      - SYNC_INTERVAL_MINUTES=360
+    depends_on: [postgres]
+
+  caddy:
+    image: caddy:alpine
+    restart: unless-stopped
+    ports: ['443:443', '80:80']
+    volumes:
+      - ../config/caddy.json:/etc/caddy/Caddyfile
+      - caddy_data:/data
+
+  watchtower:
+    image: containrrr/watchtower
+    restart: unless-stopped
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    environment:
+      - WATCHTOWER_SCHEDULE=0 0 2 * * *   # 2 AM daily
+      - WATCHTOWER_CLEANUP=true
+      - WATCHTOWER_INCLUDE_STOPPED=true
+
+volumes:
+  postgres_data:
+  neo4j_data:
+  redis_data:
+  ollama_models:
+  caddy_data:

@@ -1,0 +1,14 @@
+replicaCount:
+  api: 5
+  ai: 2
+  frontend: 3
+
+autoscaling:
+  api:
+    minReplicas: 5
+    maxReplicas: 20
+
+resources:
+  api:
+    requests: { cpu: "200m", memory: "256Mi" }
+    limits:   { cpu: "1000m", memory: "1Gi" }

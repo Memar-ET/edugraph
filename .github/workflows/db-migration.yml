@@ -1,0 +1,49 @@
+name: DB Migration — Validate
+
+on:
+  pull_request:
+    paths:
+      - 'backend/db/migrations/**'
+      - 'backend/db/neo4j/migrations/**'
+
+jobs:
+  validate-pg-migrations:
+    name: Validate PostgreSQL Migrations
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_DB: edugraph_test
+          POSTGRES_USER: edugraph
+          POSTGRES_PASSWORD: testpass
+        ports: ['5432:5432']
+        options: --health-cmd pg_isready --health-interval 10s
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Flyway
+        run: |
+          wget -q https://repo1.maven.org/maven2/org/flywaydb/flyway-commandline/10.10.0/flyway-commandline-10.10.0-linux-x64.tar.gz
+          tar -xzf flyway-commandline-10.10.0-linux-x64.tar.gz
+          sudo mv flyway-10.10.0 /opt/flyway
+          sudo ln -s /opt/flyway/flyway /usr/local/bin/flyway
+      - name: Run migrations — forward
+        run: |
+          flyway -url=jdbc:postgresql://localhost:5432/edugraph_test \
+                 -user=edugraph -password=testpass \
+                 -locations=filesystem:backend/db/migrations migrate
+      - name: Verify all migrations applied
+        run: |
+          flyway -url=jdbc:postgresql://localhost:5432/edugraph_test \
+                 -user=edugraph -password=testpass \
+                 -locations=filesystem:backend/db/migrations info
+      - name: Run backward-compatibility check
+        run: |
+          # Check no migration drops a column or renames a table
+          for f in backend/db/migrations/*.sql; do
+            if grep -iE "DROP COLUMN|RENAME TABLE|DROP TABLE" "$f"; then
+              echo "BREAKING MIGRATION: $f — use backward-compatible pattern"
+              exit 1
+            fi
+          done
+          echo "All migrations pass backward-compatibility check"

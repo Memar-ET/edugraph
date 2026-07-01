@@ -1,0 +1,91 @@
+name: Deploy — Production
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      image_tag:
+        description: 'Image tag to deploy (defaults to latest main SHA)'
+        required: false
+
+jobs:
+  deploy-production:
+    name: Deploy to Production
+    runs-on: ubuntu-latest
+    environment: production   # Requires manual approval in GitHub Environments
+    steps:
+      - uses: actions/checkout@v4
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: af-south-1
+
+      - name: Determine image tag
+        id: tag
+        run: |
+          TAG="${{ github.event.inputs.image_tag || github.sha }}"
+          echo "tag=$TAG" >> $GITHUB_OUTPUT
+
+      - name: Update kubeconfig
+        run: aws eks update-kubeconfig --name edugraph-production --region af-south-1
+
+      - name: Run DB migrations (production)
+        run: |
+          kubectl run migration-${{ steps.tag.outputs.tag }} \
+            --image=${{ secrets.ECR_REGISTRY }}/edugraph-api:${{ steps.tag.outputs.tag }} \
+            --restart=Never \
+            --namespace=edugraph-prod \
+            --env="RUN_MIGRATIONS=true" \
+            --wait --timeout=180s
+          kubectl logs migration-${{ steps.tag.outputs.tag }} -n edugraph-prod
+          kubectl delete pod migration-${{ steps.tag.outputs.tag }} -n edugraph-prod
+
+      - name: Canary deploy (25%)
+        run: |
+          helm upgrade --install edugraph ./infra/helm/edugraph \
+            --namespace edugraph-prod \
+            --values ./infra/helm/edugraph/values.production.yaml \
+            --set api.image.tag=${{ steps.tag.outputs.tag }} \
+            --set frontend.image.tag=${{ steps.tag.outputs.tag }} \
+            --set ai.image.tag=${{ steps.tag.outputs.tag }} \
+            --set canary.enabled=true \
+            --set canary.weight=25 \
+            --atomic \
+            --timeout 10m \
+            --wait
+
+      - name: Wait 10 minutes — monitor canary metrics
+        run: |
+          echo "Monitoring canary for 10 minutes..."
+          bash scripts/deploy/canary-check.sh production
+          sleep 600
+
+      - name: Promote to 100%
+        run: |
+          helm upgrade edugraph ./infra/helm/edugraph \
+            --namespace edugraph-prod \
+            --values ./infra/helm/edugraph/values.production.yaml \
+            --set api.image.tag=${{ steps.tag.outputs.tag }} \
+            --set frontend.image.tag=${{ steps.tag.outputs.tag }} \
+            --set ai.image.tag=${{ steps.tag.outputs.tag }} \
+            --set canary.enabled=false \
+            --atomic \
+            --timeout 10m \
+            --wait
+
+      - name: Rollback on failure
+        if: failure()
+        run: bash scripts/deploy/rollback.sh production
+
+      - name: Notify Slack
+        if: always()
+        uses: slackapi/slack-github-action@v1
+        with:
+          payload: |
+            {
+              "text": "Production deploy ${{ job.status }}: ${{ steps.tag.outputs.tag }} by ${{ github.actor }}"
+            }
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}

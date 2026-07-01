@@ -1,0 +1,220 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [main, develop]
+  push:
+    branches: [develop]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # ── Backend ────────────────────────────────────────────────
+  backend-lint:
+    name: Backend — Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.22'
+          cache-dependency-path: backend/go.sum
+      - name: golangci-lint
+        uses: golangci/golangci-lint-action@v4
+        with:
+          version: v1.57
+          working-directory: backend
+
+  backend-test:
+    name: Backend — Unit + Integration Tests
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_DB: edugraph_test
+          POSTGRES_USER: edugraph
+          POSTGRES_PASSWORD: testpass
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      neo4j:
+        image: neo4j:5.18-enterprise
+        env:
+          NEO4J_AUTH: neo4j/testpass
+          NEO4J_ACCEPT_LICENSE_AGREEMENT: yes
+        ports: ['7687:7687']
+      redis:
+        image: redis:7-alpine
+        ports: ['6379:6379']
+        options: --health-cmd "redis-cli ping" --health-interval 10s
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.22'
+          cache-dependency-path: backend/go.sum
+      - name: Run migrations
+        working-directory: backend
+        run: |
+          go install github.com/golang-migrate/migrate/v4/cmd/migrate@latest
+          migrate -path db/migrations -database "postgres://edugraph:testpass@localhost:5432/edugraph_test?sslmode=disable" up
+        env:
+          POSTGRES_HOST: localhost
+      - name: Run unit tests
+        working-directory: backend
+        run: go test -race -coverprofile=coverage.out ./internal/... ./pkg/...
+        env:
+          POSTGRES_HOST: localhost
+          POSTGRES_DB: edugraph_test
+          POSTGRES_USER: edugraph
+          POSTGRES_PASSWORD: testpass
+          NEO4J_URI: bolt://localhost:7687
+          NEO4J_USER: neo4j
+          NEO4J_PASSWORD: testpass
+          REDIS_URL: redis://localhost:6379
+      - name: Run integration tests
+        working-directory: backend
+        run: go test -race -tags=integration ./test/integration/...
+        env:
+          POSTGRES_HOST: localhost
+          POSTGRES_DB: edugraph_test
+          POSTGRES_USER: edugraph
+          POSTGRES_PASSWORD: testpass
+          NEO4J_URI: bolt://localhost:7687
+          NEO4J_USER: neo4j
+          NEO4J_PASSWORD: testpass
+          REDIS_URL: redis://localhost:6379
+      - name: Check coverage threshold (80%)
+        working-directory: backend
+        run: |
+          COVERAGE=$(go tool cover -func=coverage.out | grep total | awk '{print $3}' | sed 's/%//')
+          echo "Coverage: $COVERAGE%"
+          awk "BEGIN{exit ($COVERAGE < 80)}" || (echo "Coverage $COVERAGE% below 80% threshold" && exit 1)
+      - uses: codecov/codecov-action@v4
+        with:
+          file: backend/coverage.out
+          flags: backend
+
+  # ── Frontend ───────────────────────────────────────────────
+  frontend-lint:
+    name: Frontend — Lint + Type Check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v3
+        with: { version: 9 }
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: pnpm
+          cache-dependency-path: frontend/pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile
+        working-directory: frontend
+      - run: pnpm lint
+        working-directory: frontend
+      - run: pnpm type-check
+        working-directory: frontend
+
+  frontend-test:
+    name: Frontend — Unit Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v3
+        with: { version: 9 }
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: pnpm
+          cache-dependency-path: frontend/pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile
+        working-directory: frontend
+      - run: pnpm test --coverage
+        working-directory: frontend
+      - uses: codecov/codecov-action@v4
+        with:
+          file: frontend/coverage/lcov.info
+          flags: frontend
+
+  # ── AI Service ─────────────────────────────────────────────
+  ai-lint:
+    name: AI Service — Lint + Type Check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.12' }
+      - run: pip install ruff mypy
+      - run: ruff check .
+        working-directory: ai-service
+      - run: mypy app/
+        working-directory: ai-service
+
+  ai-test:
+    name: AI Service — Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.12' }
+      - run: pip install -r requirements-dev.txt
+        working-directory: ai-service
+      - run: pytest --cov=app --cov-report=xml -v
+        working-directory: ai-service
+      - uses: codecov/codecov-action@v4
+        with:
+          file: ai-service/coverage.xml
+          flags: ai-service
+
+  # ── Build Docker images ─────────────────────────────────────
+  build-images:
+    name: Build Docker Images
+    runs-on: ubuntu-latest
+    needs: [backend-test, frontend-test, ai-test]
+    if: github.event_name == 'push'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: af-south-1
+      - uses: aws-actions/amazon-ecr-login@v2
+      - name: Build and push backend
+        uses: docker/build-push-action@v5
+        with:
+          context: ./backend
+          push: true
+          tags: |
+            ${{ secrets.ECR_REGISTRY }}/edugraph-api:${{ github.sha }}
+            ${{ secrets.ECR_REGISTRY }}/edugraph-api:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          platforms: linux/amd64,linux/arm64
+      - name: Build and push frontend
+        uses: docker/build-push-action@v5
+        with:
+          context: ./frontend
+          push: true
+          tags: |
+            ${{ secrets.ECR_REGISTRY }}/edugraph-frontend:${{ github.sha }}
+            ${{ secrets.ECR_REGISTRY }}/edugraph-frontend:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      - name: Build and push AI service
+        uses: docker/build-push-action@v5
+        with:
+          context: ./ai-service
+          push: true
+          tags: |
+            ${{ secrets.ECR_REGISTRY }}/edugraph-ai:${{ github.sha }}
+            ${{ secrets.ECR_REGISTRY }}/edugraph-ai:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

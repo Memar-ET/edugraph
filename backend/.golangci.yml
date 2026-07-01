@@ -1,0 +1,42 @@
+linters:
+  enable:
+    - errcheck
+    - gosimple
+    - govet
+    - ineffassign
+    - staticcheck
+    - unused
+    - gosec
+    - gocritic
+    - gofmt
+    - goimports
+    - misspell
+    - revive
+    - testifylint
+    - noctx
+    - bodyclose
+    - sqlclosecheck
+  disable:
+    - exhaustruct   # too noisy for large structs
+
+linters-settings:
+  gosec:
+    excludes:
+      - G115   # allow integer conversions
+  revive:
+    rules:
+      - name: exported
+        severity: warning
+  goimports:
+    local-prefixes: github.com/edugraph-ai/edugraph
+
+run:
+  timeout: 5m
+  tests: true
+
+issues:
+  exclude-rules:
+    - path: _test\.go
+      linters: [gosec, errcheck]
+    - path: cmd/
+      linters: [gochecknomains]

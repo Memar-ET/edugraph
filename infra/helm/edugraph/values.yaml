@@ -1,0 +1,57 @@
+# Default Helm values — overridden by values.staging.yaml / values.production.yaml
+
+replicaCount:
+  api: 3
+  ai: 1
+  frontend: 2
+
+image:
+  registry: ""   # Set per environment
+  api:
+    repository: edugraph-api
+    tag: latest
+    pullPolicy: IfNotPresent
+  ai:
+    repository: edugraph-ai
+    tag: latest
+  frontend:
+    repository: edugraph-frontend
+    tag: latest
+
+service:
+  type: ClusterIP
+  api:
+    port: 8080
+  ai:
+    port: 8000
+  frontend:
+    port: 80
+
+ingress:
+  enabled: true
+  ingressClassName: kong
+  annotations:
+    konghq.com/strip-path: "false"
+
+autoscaling:
+  api:
+    enabled: true
+    minReplicas: 3
+    maxReplicas: 20
+    targetCPUUtilizationPercentage: 65
+  ai:
+    enabled: true
+    minReplicas: 1
+    maxReplicas: 8
+
+resources:
+  api:
+    requests: { cpu: "100m", memory: "128Mi" }
+    limits:   { cpu: "500m", memory: "512Mi" }
+  ai:
+    requests: { cpu: "500m", memory: "2Gi" }
+    limits:   { cpu: "2000m", memory: "8Gi" }
+
+canary:
+  enabled: false
+  weight: 0

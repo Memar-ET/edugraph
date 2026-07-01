@@ -1,0 +1,56 @@
+name: Deploy — Staging
+
+on:
+  push:
+    branches: [develop]
+  workflow_dispatch:
+
+jobs:
+  deploy-staging:
+    name: Deploy to Staging
+    runs-on: ubuntu-latest
+    environment: staging
+    needs: []
+    steps:
+      - uses: actions/checkout@v4
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: af-south-1
+      - name: Update kubeconfig
+        run: aws eks update-kubeconfig --name edugraph-staging --region af-south-1
+      - name: Run DB migrations
+        run: |
+          kubectl run migration-${{ github.sha }} \
+            --image=${{ secrets.ECR_REGISTRY }}/edugraph-api:${{ github.sha }} \
+            --restart=Never \
+            --namespace=edugraph-staging \
+            --env="RUN_MIGRATIONS=true" \
+            --wait --timeout=120s
+          kubectl logs migration-${{ github.sha }} -n edugraph-staging
+          kubectl delete pod migration-${{ github.sha }} -n edugraph-staging
+      - name: Helm upgrade — staging
+        run: |
+          helm upgrade --install edugraph ./infra/helm/edugraph \
+            --namespace edugraph-staging \
+            --values ./infra/helm/edugraph/values.staging.yaml \
+            --set api.image.tag=${{ github.sha }} \
+            --set frontend.image.tag=${{ github.sha }} \
+            --set ai.image.tag=${{ github.sha }} \
+            --atomic \
+            --timeout 8m \
+            --wait
+      - name: Smoke tests
+        run: |
+          bash scripts/deploy/canary-check.sh staging
+      - name: Notify Slack
+        if: always()
+        uses: slackapi/slack-github-action@v1
+        with:
+          payload: |
+            {
+              "text": "Staging deploy ${{ job.status }}: ${{ github.sha }} by ${{ github.actor }}"
+            }
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}

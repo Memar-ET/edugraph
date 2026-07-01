@@ -1,0 +1,23 @@
+# Global owners
+*                                   @edugraph-ai/engineering
+
+# Backend
+/backend/                           @edugraph-ai/backend
+/backend/db/migrations/             @edugraph-ai/backend @edugraph-ai/dba
+
+# Frontend
+/frontend/                          @edugraph-ai/frontend
+
+# AI Service
+/ai-service/                        @edugraph-ai/ai-team
+
+# Infrastructure — requires infra lead
+/infra/                             @edugraph-ai/infra
+/.github/workflows/                 @edugraph-ai/infra
+
+# School Box — requires hardware + backend
+/school-box/                        @edugraph-ai/backend @edugraph-ai/infra
+
+# Security-sensitive — requires security review
+/backend/internal/auth/             @edugraph-ai/backend @edugraph-ai/security
+/infra/terraform/                   @edugraph-ai/infra @edugraph-ai/security
