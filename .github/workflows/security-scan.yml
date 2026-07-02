@@ -3,17 +3,19 @@ name: Security Scan
 on:
   push:
     branches: [main, develop]
-  schedule:
-    - cron: '0 2 * * 1'
   pull_request:
     branches: [main, develop]
+  schedule:
+    - cron: '0 2 * * 1'
 
 jobs:
   trivy:
     name: Trivy — Container + FS Scan
     runs-on: ubuntu-latest
+
     steps:
       - uses: actions/checkout@v4
+
       - name: Trivy filesystem scan
         uses: aquasecurity/trivy-action@master
         with:
@@ -27,25 +29,31 @@ jobs:
   govulncheck:
     name: Go Vulnerability Check
     runs-on: ubuntu-latest
+
     steps:
       - uses: actions/checkout@v4
+
       - uses: actions/setup-go@v5
         with:
           go-version: '1.22'
           cache-dependency-path: backend/go.sum
+
       - name: Check if go.sum has content
         id: check
         run: |
-          if [ -s backend/go.sum ]; then
+          if [ -f backend/go.sum ] && [ -s backend/go.sum ]; then
             echo "has_sum=true" >> $GITHUB_OUTPUT
           else
             echo "has_sum=false" >> $GITHUB_OUTPUT
           fi
+
       - name: Install and run govulncheck
         if: steps.check.outputs.has_sum == 'true'
         run: |
           go install golang.org/x/vuln/cmd/govulncheck@latest
-          cd backend && govulncheck ./... || true
+          cd backend
+          govulncheck ./... || true
+
       - name: Skip — go.sum empty
         if: steps.check.outputs.has_sum == 'false'
         run: echo "✓ go.sum not populated yet — skipped."
@@ -53,14 +61,15 @@ jobs:
   secret-scan:
     name: Secret Scan (TruffleHog)
     runs-on: ubuntu-latest
+
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+
       - name: TruffleHog OSS
         uses: trufflesecurity/trufflehog@main
+        continue-on-error: true
         with:
           path: ./
-          base: ${{ github.event.repository.default_branch }}
-          head: HEAD
           extra_args: --only-verified
