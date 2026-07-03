@@ -1,0 +1,11 @@
+CREATE CONSTRAINT unit_id_unique IF NOT EXISTS
+FOR (u:CurriculumUnit) REQUIRE u.id IS UNIQUE;
+
+CREATE CONSTRAINT subject_id_unique IF NOT EXISTS
+FOR (s:Subject) REQUIRE s.id IS UNIQUE;
+
+CREATE CONSTRAINT career_id_unique IF NOT EXISTS
+FOR (c:CareerPath) REQUIRE c.id IS UNIQUE;
+
+CREATE CONSTRAINT student_id_unique IF NOT EXISTS
+FOR (st:Student) REQUIRE st.id IS UNIQUE;
