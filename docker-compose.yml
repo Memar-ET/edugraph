@@ -1,156 +1,275 @@
-version: '3.9'
+version: "3.9"
 
 services:
-  # ── Core API (Go) ────────────────────────────────────────────
+
+  # ─────────────────────────────
+  # Core API (Go)
+  # ─────────────────────────────
   api:
     build:
       context: ./backend
       dockerfile: Dockerfile.dev
-    ports: ['8080:8080']
+    ports:
+      - "8080:8080"
+
     volumes:
       - ./backend:/app
-    env_file: .env
+
+    env_file:
+      - .env
+
     environment:
-      - APP_ENV=development
-      - POSTGRES_HOST=postgres
-      - NEO4J_URI=bolt://neo4j:7687
-      - REDIS_URL=redis://redis:6379
-      - AI_SERVICE_URL=http://ai-service:8000
+      APP_ENV: ${APP_ENV}
+
+      POSTGRES_HOST: ${POSTGRES_HOST}
+      POSTGRES_PORT: ${POSTGRES_PORT}
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+
+      NEO4J_URI: ${NEO4J_URI}
+      REDIS_URL: ${REDIS_URL}
+      AI_SERVICE_URL: ${AI_SERVICE_URL}
+
     depends_on:
-      postgres: { condition: service_healthy }
-      neo4j:    { condition: service_healthy }
-      redis:    { condition: service_healthy }
+      postgres:
+        condition: service_healthy
+      neo4j:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
     restart: unless-stopped
 
-  # ── AI Service (Python) ───────────────────────────────────────
+
+  # ─────────────────────────────
+  # AI Service (Python / FastAPI)
+  # ─────────────────────────────
   ai-service:
     build:
       context: ./ai-service
       dockerfile: Dockerfile.dev
-    ports: ['8000:8000']
+    ports:
+      - "8000:8000"
+
     volumes:
       - ./ai-service:/app
-    env_file: ai-service/.env.example
+
+    env_file:
+      - .env
+
     environment:
-      - NEO4J_URI=bolt://neo4j:7687
-      - REDIS_URL=redis://redis:6379
-      - POSTGRES_HOST=postgres
+      NEO4J_URI: ${NEO4J_URI}
+      REDIS_URL: ${REDIS_URL}
+      POSTGRES_HOST: ${POSTGRES_HOST}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      EMBEDDING_MODEL: ${EMBEDDING_MODEL}
+
     depends_on:
-      postgres: { condition: service_healthy }
-      neo4j:    { condition: service_healthy }
-      redis:    { condition: service_healthy }
+      postgres:
+        condition: service_healthy
+      neo4j:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
     restart: unless-stopped
 
-  # ── Frontend (React) ──────────────────────────────────────────
+
+  # ─────────────────────────────
+  # Frontend (React / Vite)
+  # ─────────────────────────────
   frontend:
     build:
       context: ./frontend
       dockerfile: Dockerfile.dev
-    ports: ['5173:5173']
+
+    ports:
+      - "5173:5173"
+
     volumes:
       - ./frontend:/app
       - /app/node_modules
+
     environment:
-      - VITE_API_URL=http://localhost:8080
-      - VITE_AI_URL=http://localhost:8000
+      VITE_API_URL: ${AI_SERVICE_URL}
+      VITE_AI_URL: ${AI_SERVICE_URL}
+
     restart: unless-stopped
 
-  # ── PostgreSQL + pgvector ─────────────────────────────────────
+
+  # ─────────────────────────────
+  # PostgreSQL + pgvector
+  # ─────────────────────────────
   postgres:
     image: pgvector/pgvector:pg16
-    ports: ['5432:5432']
+
+    ports:
+      - "${POSTGRES_PORT}:5432"
+
     environment:
-      POSTGRES_DB: edugraph
-      POSTGRES_USER: edugraph
-      POSTGRES_PASSWORD: devpass
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./backend/db/migrations:/docker-entrypoint-initdb.d
+
     healthcheck:
-      test: ['CMD-SHELL', 'pg_isready -U edugraph -d edugraph']
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
       interval: 10s
       timeout: 5s
       retries: 5
+
     restart: unless-stopped
 
-  # ── Neo4j ─────────────────────────────────────────────────────
+
+  # ─────────────────────────────
+  # Neo4j Graph Database
+  # ─────────────────────────────
   neo4j:
     image: neo4j:5.18-enterprise
+
     ports:
-      - '7474:7474'   # Browser UI
-      - '7687:7687'   # Bolt
+      - "7474:7474"
+      - "7687:7687"
+
     environment:
-      NEO4J_AUTH: neo4j/devpass
-      NEO4J_ACCEPT_LICENSE_AGREEMENT: yes
+      NEO4J_AUTH: ${NEO4J_USER}/${NEO4J_PASSWORD}
+      NEO4J_ACCEPT_LICENSE_AGREEMENT: "yes"
+
       NEO4J_PLUGINS: '["graph-data-science", "apoc"]'
+
       NEO4J_dbms_memory_heap_initial__size: 512m
       NEO4J_dbms_memory_heap_max__size: 2g
       NEO4J_dbms_memory_pagecache_size: 1g
+
     volumes:
       - neo4j_data:/data
       - neo4j_logs:/logs
+
     healthcheck:
-      test: ['CMD-SHELL', 'cypher-shell -u neo4j -p devpass "RETURN 1"']
+      test:
+        [
+          "CMD-SHELL",
+          "cypher-shell -u ${NEO4J_USER} -p ${NEO4J_PASSWORD} 'RETURN 1'"
+        ]
       interval: 15s
       timeout: 10s
       retries: 10
+
     restart: unless-stopped
 
-  # ── Redis ─────────────────────────────────────────────────────
+
+  # ─────────────────────────────
+  # Redis
+  # ─────────────────────────────
   redis:
     image: redis:7-alpine
-    ports: ['6379:6379']
+
+    ports:
+      - "6379:6379"
+
     volumes:
       - redis_data:/data
-    command: redis-server --appendonly no --maxmemory 512mb --maxmemory-policy allkeys-lru
+
+    command: >
+      redis-server
+      --appendonly no
+      --maxmemory 512mb
+      --maxmemory-policy allkeys-lru
+
     healthcheck:
-      test: ['CMD', 'redis-cli', 'ping']
+      test: ["CMD", "redis-cli", "ping"]
       interval: 10s
       timeout: 5s
       retries: 5
+
     restart: unless-stopped
 
-  # ── Ollama (local LLM for dev) ────────────────────────────────
+
+  # ─────────────────────────────
+  # Ollama (LLM)
+  # ─────────────────────────────
   ollama:
     image: ollama/ollama:latest
-    ports: ['11434:11434']
+
+    ports:
+      - "11434:11434"
+
     volumes:
       - ollama_models:/root/.ollama
+
     restart: unless-stopped
 
-  # ── Redis Commander (dev UI) ──────────────────────────────────
+
+  # ─────────────────────────────
+  # Redis Commander (dev tools)
+  # ─────────────────────────────
   redis-commander:
     image: rediscommander/redis-commander:latest
-    ports: ['8081:8081']
+
+    ports:
+      - "8081:8081"
+
     environment:
       - REDIS_HOSTS=local:redis:6379
-    depends_on: [redis]
-    profiles: [tools]
 
-  # ── Jaeger (distributed tracing) ─────────────────────────────
+    depends_on:
+      - redis
+
+    profiles: ["tools"]
+
+
+  # ─────────────────────────────
+  # Jaeger (Tracing)
+  # ─────────────────────────────
   jaeger:
     image: jaegertracing/all-in-one:latest
-    ports:
-      - '16686:16686'  # UI
-      - '4317:4317'    # OTLP gRPC
-      - '4318:4318'    # OTLP HTTP
-    profiles: [tools]
 
-  # ── Prometheus + Grafana ──────────────────────────────────────
+    ports:
+      - "16686:16686"
+      - "4317:4317"
+      - "4318:4318"
+
+    profiles: ["tools"]
+
+
+  # ─────────────────────────────
+  # Prometheus
+  # ─────────────────────────────
   prometheus:
     image: prom/prometheus:latest
-    ports: ['9090:9090']
+
+    ports:
+      - "9090:9090"
+
     volumes:
       - ./infra/monitoring/prometheus.yml:/etc/prometheus/prometheus.yml
-    profiles: [monitoring]
 
+    profiles: ["monitoring"]
+
+
+  # ─────────────────────────────
+  # Grafana
+  # ─────────────────────────────
   grafana:
     image: grafana/grafana:latest
-    ports: ['3000:3000']
-    environment:
-      - GF_SECURITY_ADMIN_PASSWORD=admin
-    profiles: [monitoring]
 
+    ports:
+      - "3000:3000"
+
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: admin
+
+    profiles: ["monitoring"]
+
+
+# ─────────────────────────────
+# Volumes
+# ─────────────────────────────
 volumes:
   postgres_data:
   neo4j_data:
