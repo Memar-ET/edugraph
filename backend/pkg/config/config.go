@@ -3,8 +3,11 @@ package config
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"strconv"
 	"time"
+
+	"github.com/joho/godotenv"
 )
 
 type Config struct {
@@ -72,6 +75,8 @@ type AWSConfig struct {
 // Load reads configuration from environment variables, falling back to
 // development-friendly defaults so the API can run without a .env file.
 func Load() Config {
+	// load .env from project root
+	_ = godotenv.Load(filepath.Join("..", ".env"))
 	return Config{
 		AppEnv:       getenv("APP_ENV", "development"),
 		LogLevel:     getenv("LOG_LEVEL", "info"),
@@ -89,7 +94,7 @@ func Load() Config {
 			MaxConns: int32(getenvInt("POSTGRES_MAX_CONNS", 20)),
 		},
 		Neo4j: Neo4jConfig{
-			URI:             getenv("NEO4J_URI", "bolt:neo4j:7687"),
+			URI:             getenv("NEO4J_URI", "bolt://neo4j:7687"),
 			User:            getenv("NEO4J_USER", "${NEO4J_USER}"),
 			Password:        getenv("NEO4J_PASSWORD", "${NEO4J_PASSWORD}"),
 			MaxConnPoolSize: getenvInt("NEO4J_MAX_CONN_POOL_SIZE", 50),

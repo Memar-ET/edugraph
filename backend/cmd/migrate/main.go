@@ -1,6 +1,3 @@
-// Command migrate applies Neo4j graph migrations (constraints, indexes,
-// graph structure) from backend/db/neo4j/migrations. Postgres migrations
-// are handled separately by flyway (see Makefile `make migrate`).
 package main
 
 import (
@@ -8,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 
@@ -17,6 +15,10 @@ import (
 	"github.com/edugraph-ai/edugraph/pkg/database/neo4j"
 )
 
+// blockCommentRegex matches /* ... */ across multiple lines.
+// (?s) enables "dotall" mode so the dot (.) matches newlines.
+var blockCommentRegex = regexp.MustCompile(`(?s)/\*.*?\*/`)
+
 func main() {
 	if len(os.Args) < 2 || os.Args[1] != "neo4j" {
 		fmt.Fprintln(os.Stderr, "usage: migrate neo4j")
@@ -24,6 +26,10 @@ func main() {
 	}
 
 	cfg := config.Load()
+	fmt.Println("NEO4J URI =", cfg.Neo4j.URI)
+	fmt.Println("NEO4J USER =", cfg.Neo4j.User)
+	// fmt.Println("NEO4J PASSWORD =", cfg.Neo4j.Password) // Hidden for security
+
 	driver, err := neo4j.NewDriver(cfg.Neo4j)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "connect neo4j: %v\n", err)
@@ -35,7 +41,7 @@ func main() {
 		fmt.Fprintf(os.Stderr, "migrate: %v\n", err)
 		os.Exit(1)
 	}
-	fmt.Println("neo4j migrations applied")
+	fmt.Println("✅ neo4j migrations applied successfully")
 }
 
 func runMigrations(driver neo4jdriver.DriverWithContext, dir string) error {
@@ -62,31 +68,50 @@ func runMigrations(driver neo4jdriver.DriverWithContext, dir string) error {
 			return fmt.Errorf("read %s: %w", name, err)
 		}
 
-		for _, stmt := range splitStatements(string(content)) {
+		statements := splitStatements(string(content))
+		for i, stmt := range statements {
 			if _, err := session.Run(ctx, stmt, nil); err != nil {
-				return fmt.Errorf("run %s: %w", name, err)
+				return fmt.Errorf("run %s (statement %d): %w\nQuery: %s", name, i+1, err, stmt)
 			}
 		}
-		fmt.Printf("applied %s\n", name)
+		fmt.Printf("✅ applied %s (%d statements)\n", name, len(statements))
 	}
 	return nil
 }
 
-// splitStatements turns a .cypher file into individual statements, dropping
-// blank lines and `//` comments (Cypher migration files may contain several
-// CREATE CONSTRAINT/INDEX statements separated by semicolons).
+// splitStatements turns a .cypher file into individual executable statements.
+// It safely removes block comments /* ... */, single-line comments //, and inline comments.
 func splitStatements(content string) []string {
+	// 1. Strip block comments /* ... */
+	content = blockCommentRegex.ReplaceAllString(content, "")
+
 	var stmts []string
+	// 2. Split by semicolon
 	for _, raw := range strings.Split(content, ";") {
 		var lines []string
 		for _, line := range strings.Split(raw, "\n") {
 			trimmed := strings.TrimSpace(line)
+
+			// 3. Skip empty lines and full-line comments
 			if trimmed == "" || strings.HasPrefix(trimmed, "//") {
 				continue
 			}
-			lines = append(lines, trimmed)
+
+			// 4. Strip inline // comments so they don't break multi-line joins
+			if idx := strings.Index(trimmed, "//"); idx != -1 {
+				trimmed = strings.TrimSpace(trimmed[:idx])
+			}
+
+			if trimmed != "" {
+				lines = append(lines, trimmed)
+			}
 		}
-		if stmt := strings.Join(lines, " "); stmt != "" {
+
+		stmt := strings.Join(lines, " ")
+		stmt = strings.TrimSpace(stmt)
+
+		// 5. Only add if there's actual Cypher code left
+		if stmt != "" {
 			stmts = append(stmts, stmt)
 		}
 	}
