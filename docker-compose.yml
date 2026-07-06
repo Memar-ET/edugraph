@@ -135,12 +135,14 @@ services:
     volumes:
       - ./backend/db/migrations:/flyway/sql
 
-    command:
-      - -url=jdbc:postgresql://postgres:5432/edugraph
-      - -user=edugraph
-      - -password=postgres
-      - -locations=filesystem:/flyway/sql
-      - migrate
+    environment:
+      FLYWAY_URL: jdbc:postgresql://postgres:5432/edugraph
+      FLYWAY_USER: ${POSTGRES_USER}
+      FLYWAY_PASSWORD: ${POSTGRES_PASSWORD}
+      FLYWAY_LOCATIONS: filesystem:/flyway/sql
+
+    command: migrate
+
     restart: "no"
   # ─────────────────────────────
   # Neo4j Graph Database
