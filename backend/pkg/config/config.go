@@ -83,15 +83,15 @@ func Load() Config {
 		Postgres: PostgresConfig{
 			Host:     getenv("POSTGRES_HOST", "postgres"),
 			Port:     getenv("POSTGRES_PORT", "5432"),
-			DB:       getenv("POSTGRES_DB", "edugraph"),
-			User:     getenv("POSTGRES_USER", "edugraph"),
-			Password: getenv("POSTGRES_PASSWORD", "devpass"),
+			DB:       getenv("POSTGRES_DB", "${POSTGRES_DB}"),
+			User:     getenv("POSTGRES_USER", "${POSTGRES_USER}"),
+			Password: getenv("POSTGRES_PASSWORD", "${POSTGRES_PASSWORD}"),
 			MaxConns: int32(getenvInt("POSTGRES_MAX_CONNS", 20)),
 		},
 		Neo4j: Neo4jConfig{
 			URI:             getenv("NEO4J_URI", "bolt:neo4j:7687"),
-			User:            getenv("NEO4J_USER", "neo4j"),
-			Password:        getenv("NEO4J_PASSWORD", "devpass"),
+			User:            getenv("NEO4J_USER", "${NEO4J_USER}"),
+			Password:        getenv("NEO4J_PASSWORD", "${NEO4J_PASSWORD}"),
 			MaxConnPoolSize: getenvInt("NEO4J_MAX_CONN_POOL_SIZE", 50),
 		},
 		Redis: RedisConfig{
