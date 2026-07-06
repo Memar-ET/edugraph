@@ -76,12 +76,12 @@ func Load() Config {
 		AppEnv:       getenv("APP_ENV", "development"),
 		LogLevel:     getenv("LOG_LEVEL", "info"),
 		Port:         getenv("PORT", "8080"),
-		AIServiceURL: getenv("AI_SERVICE_URL", "http://localhost:8000"),
+		AIServiceURL: getenv("AI_SERVICE_URL", "ai-service:8000"),
 		CORSOrigins:  []string{getenv("FRONTEND_URL", "http://localhost:5173")},
 		AllowedHosts: []string{},
 
 		Postgres: PostgresConfig{
-			Host:     getenv("POSTGRES_HOST", "localhost"),
+			Host:     getenv("POSTGRES_HOST", "postgres"),
 			Port:     getenv("POSTGRES_PORT", "5432"),
 			DB:       getenv("POSTGRES_DB", "edugraph"),
 			User:     getenv("POSTGRES_USER", "edugraph"),
@@ -89,13 +89,13 @@ func Load() Config {
 			MaxConns: int32(getenvInt("POSTGRES_MAX_CONNS", 20)),
 		},
 		Neo4j: Neo4jConfig{
-			URI:             getenv("NEO4J_URI", "bolt://localhost:7687"),
+			URI:             getenv("NEO4J_URI", "bolt:neo4j:7687"),
 			User:            getenv("NEO4J_USER", "neo4j"),
 			Password:        getenv("NEO4J_PASSWORD", "devpass"),
 			MaxConnPoolSize: getenvInt("NEO4J_MAX_CONN_POOL_SIZE", 50),
 		},
 		Redis: RedisConfig{
-			URL:      getenv("REDIS_URL", "redis://localhost:6379"),
+			URL:      getenv("REDIS_URL", "redis://redis:6379"),
 			Password: getenv("REDIS_PASSWORD", ""),
 		},
 		JWT: JWTConfig{

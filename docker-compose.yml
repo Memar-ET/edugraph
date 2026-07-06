@@ -115,7 +115,7 @@ services:
 
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      - ./backend/db/migrations:/docker-entrypoint-initdb.d
+      
 
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
@@ -125,7 +125,23 @@ services:
 
     restart: unless-stopped
 
+  flyway:
+    image: flyway/flyway:10
 
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+    volumes:
+      - ./backend/db/migrations:/flyway/sql
+
+    command:
+      - -url=jdbc:postgresql://postgres:5432/edugraph
+      - -user=edugraph
+      - -password=postgres
+      - -locations=filesystem:/flyway/sql
+      - migrate
+    restart: "no"
   # ─────────────────────────────
   # Neo4j Graph Database
   # ─────────────────────────────
