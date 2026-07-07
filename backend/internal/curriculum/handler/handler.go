@@ -1,144 +1,144 @@
 package handler
 
 import (
-	"encoding/json"
 	"net/http"
 	"strconv"
-
-	"github.com/go-chi/chi/v5"
 
 	"github.com/edugraph-ai/edugraph/internal/curriculum/dto"
 	"github.com/edugraph-ai/edugraph/internal/curriculum/service"
 	apperrors "github.com/edugraph-ai/edugraph/pkg/errors"
 	"github.com/edugraph-ai/edugraph/pkg/middleware"
 	"github.com/edugraph-ai/edugraph/pkg/validator"
+	"github.com/go-chi/chi/v5"
+	"github.com/google/uuid"
 )
 
+// maxUploadBytes bounds the in-memory portion of the multipart parse.
+// Files larger than this spill to temp files on disk (handled by Go's
+// multipart reader); the hard ceiling on the file itself is enforced by
+// the reverse proxy / server ReadTimeout in production.
+const maxUploadBytes = 25 << 20 // 25 MB
+
 type Handler struct {
-	svc *service.Service
+	service *service.Service
 }
 
-func New(svc *service.Service) *Handler {
-	return &Handler{svc: svc}
+func New(service *service.Service) *Handler {
+	return &Handler{service: service}
 }
 
-func (h *Handler) CreateSubject(w http.ResponseWriter, r *http.Request) {
-	var req dto.CreateSubjectRequest
-	if !decode(w, r, &req) {
+// Upload handles POST /api/v1/curriculum/upload
+// Expects multipart/form-data with a "file" part (PDF or DOCX) plus the
+// form fields "subjectCode", "gradeLevel", and "academicYear". Requires an
+// authenticated user with the curriculum_officer or ministry_admin role
+// (enforced by middleware.RequireRole in the router).
+func (h *Handler) Upload(w http.ResponseWriter, r *http.Request) {
+	// 1. Get the authenticated user ID set by the Authenticate middleware.
+	userIDStr := middleware.UserID(r.Context())
+	if userIDStr == "" {
+		middleware.WriteError(w, apperrors.Unauthorized("user not authenticated"))
 		return
+	}
+	userID, err := uuid.Parse(userIDStr)
+	if err != nil {
+		middleware.WriteError(w, apperrors.Internal(err))
+		return
+	}
+
+	// 2. Parse the multipart form. This reads the whole request body once,
+	// so form fields and the file must both be read from it below — the
+	// body cannot also be JSON-decoded afterwards.
+	if err := r.ParseMultipartForm(maxUploadBytes); err != nil {
+		middleware.WriteError(w, apperrors.BadRequest("invalid multipart form data"))
+		return
+	}
+
+	gradeLevel, err := strconv.Atoi(r.FormValue("gradeLevel"))
+	if err != nil {
+		middleware.WriteError(w, apperrors.BadRequest("gradeLevel must be a number between 1 and 12"))
+		return
+	}
+
+	req := dto.UploadRequest{
+		SubjectCode:  r.FormValue("subjectCode"),
+		GradeLevel:   gradeLevel,
+		AcademicYear: r.FormValue("academicYear"),
 	}
 	if err := validator.Struct(req); err != nil {
 		middleware.WriteError(w, apperrors.BadRequest(err.Error()))
 		return
 	}
-	resp, err := h.svc.CreateSubject(r.Context(), req)
+
+	// 3. Get the uploaded file.
+	file, header, err := r.FormFile("file")
 	if err != nil {
-		middleware.WriteError(w, err)
+		middleware.WriteError(w, apperrors.BadRequest("file is required"))
 		return
 	}
-	middleware.WriteJSON(w, http.StatusCreated, resp)
-}
+	defer file.Close()
 
-func (h *Handler) ListSubjects(w http.ResponseWriter, r *http.Request) {
-	grade, _ := strconv.Atoi(r.URL.Query().Get("grade_level"))
-	resp, err := h.svc.ListSubjects(r.Context(), int16(grade))
-	if err != nil {
-		middleware.WriteError(w, err)
+	// Security check: only allow PDF or DOCX curriculum documents.
+	mimeType := header.Header.Get("Content-Type")
+	if mimeType != "application/pdf" &&
+		mimeType != "application/vnd.openxmlformats-officedocument.wordprocessingml.document" {
+		middleware.WriteError(w, apperrors.BadRequest("only PDF and DOCX files are allowed"))
 		return
 	}
-	middleware.WriteJSON(w, http.StatusOK, resp)
+
+	// 4. Hand off to the service: saves the file via the active
+	// StorageProvider (Postgres in dev, S3 in prod), creates the upload_job
+	// row, and queues the parse job for the AI service via Redis.
+	resp, err := h.service.Upload(
+		r.Context(),
+		userID,
+		req,
+		header.Filename,
+		mimeType,
+		header.Size,
+		file,
+	)
+	if err != nil {
+		middleware.WriteError(w, apperrors.Internal(err))
+		return
+	}
+
+	middleware.WriteJSON(w, http.StatusAccepted, resp)
 }
 
+// GetJob handles GET /api/v1/curriculum/jobs/:id
+func (h *Handler) GetJob(w http.ResponseWriter, r *http.Request) {
+	jobIDStr := chi.URLParam(r, "id")
+	jobID, err := uuid.Parse(jobIDStr)
+	if err != nil {
+		middleware.WriteError(w, apperrors.BadRequest("invalid job id"))
+		return
+	}
+
+	job, err := h.service.GetJob(r.Context(), jobID)
+	if err != nil {
+		middleware.WriteError(w, apperrors.NotFound("job not found"))
+		return
+	}
+
+	middleware.WriteJSON(w, http.StatusOK, job)
+}
+
+// CreateUnit handles POST /api/v1/curriculum/units
 func (h *Handler) CreateUnit(w http.ResponseWriter, r *http.Request) {
-	var req dto.CreateUnitRequest
-	if !decode(w, r, &req) {
-		return
-	}
-	if err := validator.Struct(req); err != nil {
-		middleware.WriteError(w, apperrors.BadRequest(err.Error()))
-		return
-	}
-	resp, err := h.svc.CreateUnit(r.Context(), req)
-	if err != nil {
-		middleware.WriteError(w, err)
-		return
-	}
-	middleware.WriteJSON(w, http.StatusCreated, resp)
+	middleware.WriteError(w, apperrors.NotImplemented("not yet implemented"))
 }
 
-func (h *Handler) GetUnit(w http.ResponseWriter, r *http.Request) {
-	resp, err := h.svc.GetUnit(r.Context(), chi.URLParam(r, "id"))
-	if err != nil {
-		middleware.WriteError(w, err)
-		return
-	}
-	middleware.WriteJSON(w, http.StatusOK, resp)
-}
-
-func (h *Handler) ListUnits(w http.ResponseWriter, r *http.Request) {
-	resp, err := h.svc.ListUnits(r.Context(), r.URL.Query().Get("subject_id"))
-	if err != nil {
-		middleware.WriteError(w, err)
-		return
-	}
-	middleware.WriteJSON(w, http.StatusOK, resp)
-}
-
+// UpdateUnit handles PATCH /api/v1/curriculum/units/:id
 func (h *Handler) UpdateUnit(w http.ResponseWriter, r *http.Request) {
-	var req dto.UpdateUnitRequest
-	if !decode(w, r, &req) {
-		return
-	}
-	if err := validator.Struct(req); err != nil {
-		middleware.WriteError(w, apperrors.BadRequest(err.Error()))
-		return
-	}
-	resp, err := h.svc.UpdateUnit(r.Context(), chi.URLParam(r, "id"), req)
-	if err != nil {
-		middleware.WriteError(w, err)
-		return
-	}
-	middleware.WriteJSON(w, http.StatusOK, resp)
+	middleware.WriteError(w, apperrors.NotImplemented("not yet implemented"))
 }
 
+// DeleteUnit handles DELETE /api/v1/curriculum/units/:id
 func (h *Handler) DeleteUnit(w http.ResponseWriter, r *http.Request) {
-	if err := h.svc.DeleteUnit(r.Context(), chi.URLParam(r, "id")); err != nil {
-		middleware.WriteError(w, err)
-		return
-	}
-	middleware.WriteJSON(w, http.StatusNoContent, nil)
+	middleware.WriteError(w, apperrors.NotImplemented("not yet implemented"))
 }
 
+// AddPrerequisite handles POST /api/v1/curriculum/units/:id/prerequisites
 func (h *Handler) AddPrerequisite(w http.ResponseWriter, r *http.Request) {
-	var req dto.AddPrerequisiteRequest
-	if !decode(w, r, &req) {
-		return
-	}
-	if err := validator.Struct(req); err != nil {
-		middleware.WriteError(w, apperrors.BadRequest(err.Error()))
-		return
-	}
-	if err := h.svc.AddPrerequisite(r.Context(), chi.URLParam(r, "id"), req); err != nil {
-		middleware.WriteError(w, err)
-		return
-	}
-	middleware.WriteJSON(w, http.StatusNoContent, nil)
-}
-
-func (h *Handler) Prerequisites(w http.ResponseWriter, r *http.Request) {
-	resp, err := h.svc.Prerequisites(r.Context(), chi.URLParam(r, "id"))
-	if err != nil {
-		middleware.WriteError(w, err)
-		return
-	}
-	middleware.WriteJSON(w, http.StatusOK, resp)
-}
-
-func decode(w http.ResponseWriter, r *http.Request, dst any) bool {
-	defer r.Body.Close()
-	if err := json.NewDecoder(r.Body).Decode(dst); err != nil {
-		middleware.WriteError(w, apperrors.BadRequest("invalid request body"))
-		return false
-	}
-	return true
+	middleware.WriteError(w, apperrors.NotImplemented("not yet implemented"))
 }

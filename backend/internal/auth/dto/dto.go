@@ -6,7 +6,7 @@ type RegisterRequest struct {
 	Email    string `json:"email" validate:"required,email"`
 	Password string `json:"password" validate:"required,min=8"`
 	FullName string `json:"full_name" validate:"required"`
-	Role     string `json:"role" validate:"required,oneof=student teacher school_admin regional_admin ministry_admin"`
+	Role     string `json:"role" validate:"required,oneof=student teacher school_admin regional_admin ministry_admin curriculum_officer"`
 	Phone    string `json:"phone,omitempty"`
 	RegionID string `json:"region_id,omitempty" validate:"omitempty,uuid"`
 	SchoolID string `json:"school_id,omitempty" validate:"omitempty,uuid"`

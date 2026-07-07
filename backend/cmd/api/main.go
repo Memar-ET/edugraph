@@ -8,6 +8,8 @@ import (
 	"syscall"
 	"time"
 
+	storagepkg "github.com/edugraph-ai/edugraph/pkg/storage"
+
 	assessmenthandler "github.com/edugraph-ai/edugraph/internal/assessment/handler"
 	assessmentrepo "github.com/edugraph-ai/edugraph/internal/assessment/repository"
 	assessmentsvc "github.com/edugraph-ai/edugraph/internal/assessment/service"
@@ -149,9 +151,18 @@ func main() {
 	ministryService := ministrysvc.New(ministryRepository)
 	ministryHandler := ministryhandler.New(ministryService)
 
-	curriculumRepository := curriculumrepo.New(pgPool, neo4jDriver)
-	curriculumService := curriculumsvc.New(curriculumRepository)
+	// ... existing code ...
+
+	// 1. Initialize Storage Provider (Dev Mode: Postgres)
+	// In Prod, you would swap this for storage.NewS3Storage(cfg.AWS)
+	storageProvider := storagepkg.NewPostgresStorage(pgPool)
+
+	// 2. Initialize Curriculum Domain
+	curriculumRepo := curriculumrepo.New(pgPool)
+	curriculumService := curriculumsvc.New(curriculumRepo, storageProvider, redisClient)
 	curriculumHandler := curriculumhandler.New(curriculumService)
+
+	// ... pass curriculumHandler to router ...
 
 	assessmentRepository := assessmentrepo.New(pgPool, neo4jDriver)
 	assessmentService := assessmentsvc.New(assessmentRepository)

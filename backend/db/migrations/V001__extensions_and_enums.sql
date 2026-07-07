@@ -8,7 +8,8 @@ CREATE TYPE user_role AS ENUM (
     'teacher',
     'school_admin',
     'regional_admin',
-    'ministry_admin'
+    'ministry_admin',
+    'curriculum_officer'
 );
 
 CREATE TYPE assessment_type AS ENUM ('quiz', 'exam', 'national');

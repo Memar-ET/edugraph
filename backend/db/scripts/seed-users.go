@@ -82,8 +82,8 @@ func main() {
 
 		// Insert into the database (using ON CONFLICT so we can run this script multiple times safely)
 		sql := `
-			INSERT INTO identity.users (email, password_hash, role, full_name, phone, is_active, mfa_enabled, preferred_lang)
-			VALUES ($1, $2, $3, $4, $5, true, false, 'am')
+			INSERT INTO users (email, password_hash, role, full_name, phone, is_active)
+			VALUES ($1, $2, $3, $4, $5, true)
 			ON CONFLICT (email) DO NOTHING;
 		`
 

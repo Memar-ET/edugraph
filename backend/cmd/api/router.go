@@ -25,11 +25,12 @@ import (
 
 // Role constants mirror the Postgres user_role enum (db/migrations/V001).
 const (
-	roleStudent       = "student"
-	roleTeacher       = "teacher"
-	roleSchoolAdmin   = "school_admin"
-	roleRegionalAdmin = "regional_admin"
-	roleMinistryAdmin = "ministry_admin"
+	roleStudent           = "student"
+	roleTeacher           = "teacher"
+	roleSchoolAdmin       = "school_admin"
+	roleRegionalAdmin     = "regional_admin"
+	roleMinistryAdmin     = "ministry_admin"
+	roleCurriculumOfficer = "curriculum_officer"
 )
 
 type handlers struct {
@@ -130,12 +131,8 @@ func newRouter(cfg config.Config, log *zap.Logger, verifier middleware.TokenVeri
 
 			// ── Curriculum ──────────────────────────────────────
 			r.Route("/curriculum", func(r chi.Router) {
-				r.Get("/subjects", h.curriculum.ListSubjects)
-				r.With(middleware.RequireRole(roleMinistryAdmin)).Post("/subjects", h.curriculum.CreateSubject)
-
-				r.Get("/units", h.curriculum.ListUnits)
-				r.Get("/units/{id}", h.curriculum.GetUnit)
-				r.Get("/units/{id}/prerequisites", h.curriculum.Prerequisites)
+				r.With(middleware.RequireRole(roleCurriculumOfficer, roleMinistryAdmin)).Post("/upload", h.curriculum.Upload)
+				r.Get("/jobs/{id}", h.curriculum.GetJob)
 				r.With(middleware.RequireRole(roleMinistryAdmin, roleTeacher)).Post("/units", h.curriculum.CreateUnit)
 				r.With(middleware.RequireRole(roleMinistryAdmin, roleTeacher)).Patch("/units/{id}", h.curriculum.UpdateUnit)
 				r.With(middleware.RequireRole(roleMinistryAdmin)).Delete("/units/{id}", h.curriculum.DeleteUnit)

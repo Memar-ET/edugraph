@@ -1,51 +1,28 @@
 package dto
 
-import "time"
+import "github.com/google/uuid"
 
-type CreateSubjectRequest struct {
-	Name       string `json:"name" validate:"required"`
-	Code       string `json:"code" validate:"required"`
-	GradeLevel int16  `json:"grade_level" validate:"required,min=1,max=12"`
+// UploadRequest represents the multipart form fields sent by the frontend
+// alongside the uploaded file. Fields are read manually from the request
+// via r.FormValue in the handler (Go's stdlib has no form-tag decoder), so
+// the "form" tags below document field names rather than driving decoding.
+type UploadRequest struct {
+	SubjectCode  string `form:"subjectCode" validate:"required"`
+	GradeLevel   int    `form:"gradeLevel" validate:"required,min=1,max=12"`
+	AcademicYear string `form:"academicYear" validate:"required"`
 }
 
-type SubjectResponse struct {
-	ID         string    `json:"id"`
-	Name       string    `json:"name"`
-	Code       string    `json:"code"`
-	GradeLevel int16     `json:"grade_level"`
-	CreatedAt  time.Time `json:"created_at"`
+// UploadResponse is returned immediately after the job is queued.
+type UploadResponse struct {
+	JobID   uuid.UUID `json:"jobId"`
+	Status  string    `json:"status"`
+	Message string    `json:"message"`
 }
 
-type CreateUnitRequest struct {
-	SubjectID   string `json:"subject_id" validate:"required,uuid"`
-	Title       string `json:"title" validate:"required"`
-	Description string `json:"description,omitempty"`
-	OrderIndex  int    `json:"order_index"`
-}
-
-type UpdateUnitRequest struct {
-	Title       string `json:"title" validate:"required"`
-	Description string `json:"description,omitempty"`
-	OrderIndex  int    `json:"order_index"`
-}
-
-type UnitResponse struct {
-	ID          string    `json:"id"`
-	SubjectID   string    `json:"subject_id"`
-	Title       string    `json:"title"`
-	Description string    `json:"description,omitempty"`
-	OrderIndex  int       `json:"order_index"`
-	CreatedAt   time.Time `json:"created_at"`
-}
-
-// AddPrerequisiteRequest links unit -> prerequisite in the Neo4j graph:
-// (:CurriculumUnit {id: unit_id})-[:PREREQUISITE_OF]->(:CurriculumUnit {id: prerequisite of}).
-// Semantically: PrerequisiteUnitID must be completed before UnitID.
-type AddPrerequisiteRequest struct {
-	PrerequisiteUnitID string `json:"prerequisite_unit_id" validate:"required,uuid"`
-}
-
-type PrerequisiteResponse struct {
-	UnitID string `json:"unit_id"`
-	Title  string `json:"title"`
+// JobStatus represents the current state of the parsing pipeline.
+type JobStatus struct {
+	JobID    uuid.UUID `json:"jobId"`
+	Status   string    `json:"status"` // pending, parsing, parsed, approved, failed
+	FileName string    `json:"fileName"`
+	Error    *string   `json:"error,omitempty"`
 }
