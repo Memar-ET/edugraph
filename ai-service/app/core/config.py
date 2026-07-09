@@ -3,7 +3,7 @@ from pydantic_settings import BaseSettings
 
 class Settings(BaseSettings):
     # ── POSTGRES ─────────────────────────────
-    POSTGRES_HOST: str = "postgress"
+    POSTGRES_HOST: str = "postgres"
     POSTGRES_PORT: int = 5432
     POSTGRES_DB: str = "edugraph"
     POSTGRES_USER: str = "edugraph"
@@ -29,6 +29,14 @@ class Settings(BaseSettings):
     AI_SERVICE_URL: str = "ai-service:8000"
     OLLAMA_HOST: str = "ollama:11434"
     EMBEDDING_MODEL: str = "intfloat/multilingual-e5-large"
+
+    @property
+    def POSTGRES_DSN(self) -> str:
+        """asyncpg connection string built from the individual settings above."""
+        return (
+            f"postgresql://{self.POSTGRES_USER}:{self.POSTGRES_PASSWORD}"
+            f"@{self.POSTGRES_HOST}:{self.POSTGRES_PORT}/{self.POSTGRES_DB}"
+        )
 
 
 # Singleton instance (THIS is what your app imports)

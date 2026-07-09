@@ -5,8 +5,7 @@ WORKDIR /app
 # Install dependencies first (cache layer)
 COPY go.mod go.sum ./
 RUN go mod download
-ENV GOPROXY=https://proxy.golang.org,direct
-ENV GOSUMDB=sum.golang.org
+
 # Build
 COPY . .
 RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \

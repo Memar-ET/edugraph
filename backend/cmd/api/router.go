@@ -132,7 +132,8 @@ func newRouter(cfg config.Config, log *zap.Logger, verifier middleware.TokenVeri
 			// ── Curriculum ──────────────────────────────────────
 			r.Route("/curriculum", func(r chi.Router) {
 				r.With(middleware.RequireRole(roleCurriculumOfficer, roleMinistryAdmin)).Post("/upload", h.curriculum.Upload)
-				r.Get("/jobs/{id}", h.curriculum.GetJob)
+				r.With(middleware.RequireRole(roleCurriculumOfficer, roleMinistryAdmin)).Get("/jobs/{id}", h.curriculum.GetJob)
+				r.With(middleware.RequireRole(roleCurriculumOfficer, roleMinistryAdmin)).Post("/jobs/{id}/approve", h.curriculum.Approve)
 				r.With(middleware.RequireRole(roleMinistryAdmin, roleTeacher)).Post("/units", h.curriculum.CreateUnit)
 				r.With(middleware.RequireRole(roleMinistryAdmin, roleTeacher)).Patch("/units/{id}", h.curriculum.UpdateUnit)
 				r.With(middleware.RequireRole(roleMinistryAdmin)).Delete("/units/{id}", h.curriculum.DeleteUnit)
@@ -175,6 +176,11 @@ func newRouter(cfg config.Config, log *zap.Logger, verifier middleware.TokenVeri
 			r.Route("/storage", func(r chi.Router) {
 				r.Post("/presign-upload", h.storage.PresignUpload)
 				r.Post("/presign-download", h.storage.PresignDownload)
+				// Dev-mode "Fork in the Road" for viewing an uploaded curriculum
+				// file: streams it from the active StorageProvider (Postgres
+				// BYTEA today; would be an S3 GetObject once S3StorageProvider
+				// exists -- see internal/curriculum/service.DownloadFile).
+				r.With(middleware.RequireRole(roleCurriculumOfficer, roleMinistryAdmin)).Get("/files/{jobId}", h.curriculum.DownloadFile)
 			})
 		})
 	})

@@ -2,13 +2,19 @@ package service
 
 import (
 	"context"
+	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
+	"mime"
+	"path/filepath"
 
 	"github.com/edugraph-ai/edugraph/internal/curriculum/dto"
 	"github.com/edugraph-ai/edugraph/internal/curriculum/repository"
+	apperrors "github.com/edugraph-ai/edugraph/pkg/errors"
 	"github.com/edugraph-ai/edugraph/pkg/storage"
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	"github.com/redis/go-redis/v9" // Assuming go-redis is used
 )
 
@@ -58,5 +64,87 @@ func (s *Service) Upload(ctx context.Context, userID uuid.UUID, req dto.UploadRe
 }
 
 func (s *Service) GetJob(ctx context.Context, jobID uuid.UUID) (*dto.JobStatus, error) {
-	return s.repo.GetJob(ctx, jobID)
+	job, err := s.repo.GetJob(ctx, jobID)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, apperrors.NotFound("job not found")
+		}
+		return nil, err
+	}
+	return job, nil
+}
+
+// DownloadFile streams the original uploaded file for a job -- backs the
+// Step 3 "view original PDF alongside the parsed tree" dev-mode proxy
+// endpoint (GET /api/v1/storage/files/{jobId}). In prod mode this same
+// StorageProvider would instead be one that returns a presigned S3 URL;
+// swapping that in is the only change needed here.
+func (s *Service) DownloadFile(ctx context.Context, jobID uuid.UUID) (io.ReadCloser, string, string, error) {
+	fileRef, fileName, err := s.repo.GetFileRef(ctx, jobID)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, "", "", apperrors.NotFound("job not found")
+		}
+		return nil, "", "", fmt.Errorf("fetch file reference: %w", err)
+	}
+
+	reader, err := s.storage.Download(ctx, fileRef)
+	if err != nil {
+		return nil, "", "", fmt.Errorf("download file: %w", err)
+	}
+
+	mimeType := mime.TypeByExtension(filepath.Ext(fileName))
+	if mimeType == "" {
+		mimeType = "application/octet-stream"
+	}
+	return reader, fileName, mimeType, nil
+}
+
+// Approve is Step 3's final act: the curriculum officer has reviewed (and
+// possibly corrected) the AI-parsed tree and is ready to make it official.
+//
+// If `edited` is provided (the officer changed something in the UI), that
+// becomes the structure that gets promoted AND the new value of
+// upload_jobs.parsed_structure. If nil, the tree already stored from
+// parsing is used unchanged.
+func (s *Service) Approve(ctx context.Context, userID, jobID uuid.UUID, edited *dto.ParsedStructurePayload) (*dto.ApproveResponse, error) {
+	status, storedStructure, err := s.repo.GetJobForApproval(ctx, jobID)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, apperrors.NotFound("job not found")
+		}
+		return nil, fmt.Errorf("fetch job: %w", err)
+	}
+	if status != "parsed" && status != "review" {
+		return nil, apperrors.Conflict(fmt.Sprintf(
+			"job status is %q; only jobs with status 'parsed' or 'review' can be approved", status,
+		))
+	}
+
+	var structure dto.ParsedStructurePayload
+	var finalJSON []byte
+
+	if edited != nil {
+		structure = *edited
+		finalJSON, err = json.Marshal(edited)
+		if err != nil {
+			return nil, apperrors.BadRequest("invalid parsedStructure in request body")
+		}
+	} else {
+		if len(storedStructure) == 0 {
+			return nil, apperrors.BadRequest(
+				"job has no parsed structure yet; wait for parsing to finish, or submit parsedStructure in the request body",
+			)
+		}
+		if err := json.Unmarshal(storedStructure, &structure); err != nil {
+			return nil, fmt.Errorf("parse stored structure: %w", err)
+		}
+		finalJSON = storedStructure
+	}
+
+	if len(structure.Units) == 0 {
+		return nil, apperrors.BadRequest("parsed structure has no units to promote")
+	}
+
+	return s.repo.ApproveAndPromote(ctx, jobID, userID, structure, finalJSON)
 }
