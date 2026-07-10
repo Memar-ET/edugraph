@@ -10,14 +10,16 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+	neo4jdriver "github.com/neo4j/neo4j-go-driver/v5/neo4j"
 )
 
 type Repository struct {
-	pool *pgxpool.Pool
+	pool  *pgxpool.Pool
+	neo4j neo4jdriver.DriverWithContext
 }
 
-func New(pool *pgxpool.Pool) *Repository {
-	return &Repository{pool: pool}
+func New(pool *pgxpool.Pool, neo4j neo4jdriver.DriverWithContext) *Repository {
+	return &Repository{pool: pool, neo4j: neo4j}
 }
 
 // CreateJob inserts a new upload job into the database.
@@ -79,6 +81,23 @@ func (r *Repository) GetFileRef(ctx context.Context, jobID uuid.UUID) (fileRef s
 	return fileRef, fileName, err
 }
 
+// GetJobForApproval fetches the fields the service layer needs before
+// promoting: the job's current status (must be 'parsed' or 'review') and
+// the previously-stored tree, used when the caller doesn't submit an
+// edited one of their own.
+func (r *Repository) GetJobForApproval(ctx context.Context, jobID uuid.UUID) (status string, parsedStructure []byte, err error) {
+	query := `SELECT status, parsed_structure FROM curriculum.upload_jobs WHERE id = $1`
+	err = r.pool.QueryRow(ctx, query, jobID).Scan(&status, &parsedStructure)
+	return status, parsedStructure, err
+}
+
+func nullIfEmpty(s string) *string {
+	if s == "" {
+		return nil
+	}
+	return &s
+}
+
 // jobCore is the subset of a job row needed to run the approval workflow.
 type jobCore struct {
 	SubjectCode     string
@@ -107,34 +126,41 @@ func (r *Repository) getJobCore(ctx context.Context, tx pgx.Tx, jobID uuid.UUID,
 	return &jc, nil
 }
 
-// GetJobForApproval fetches the fields the service layer needs before
-// promoting: the job's current status (must be 'parsed' or 'review') and
-// the previously-stored tree, used when the caller doesn't submit an
-// edited one of their own.
-func (r *Repository) GetJobForApproval(ctx context.Context, jobID uuid.UUID) (status string, parsedStructure []byte, err error) {
-	query := `SELECT status, parsed_structure FROM curriculum.upload_jobs WHERE id = $1`
-	err = r.pool.QueryRow(ctx, query, jobID).Scan(&status, &parsedStructure)
-	return status, parsedStructure, err
+// promotedUnit/promotedTopic carry just enough of what got written to
+// Postgres (the generated IDs) to mirror the same hierarchy into Neo4j
+// afterwards, without a second round-trip to re-read it.
+type promotedUnit struct {
+	id      uuid.UUID
+	number  int
+	titleEn string
+	topics  []promotedTopic
 }
 
-func nullIfEmpty(s string) *string {
-	if s == "" {
-		return nil
-	}
-	return &s
+type promotedTopic struct {
+	id            uuid.UUID
+	sequenceOrder int
+	titleEn       string
+	keyConcepts   []string
 }
 
-// ApproveAndPromote is the core of Step 3: it locks the job row, verifies
-// it's actually in a state that can be approved, then promotes every
-// unit/topic/CLO in `structure` into the real curriculum.* tables, and
-// finally marks the job 'approved'. Everything happens in one transaction,
-// so a failure partway through (e.g. a malformed CLO) leaves the database
-// exactly as it was -- no half-promoted job.
+// ApproveAndPromote is the core of Step 3/4: it locks the job row, verifies
+// it's actually in a state that can be approved, promotes every unit/topic/
+// CLO in `structure` into the real curriculum.* tables, marks the job
+// 'approved' -- all in one Postgres transaction -- and then, once that's
+// safely committed, mirrors the Subject/Unit/Topic hierarchy into Neo4j as
+// the Knowledge Graph (Step 4's "Magic Moment").
 //
 // Units/topics/CLOs are upserted (ON CONFLICT ... DO UPDATE) keyed on their
 // natural key (see migration V016), so approving the same job twice (e.g.
 // after further edits) updates the existing rows rather than duplicating
-// them.
+// them, and the Neo4j MERGE calls are equally safe to repeat.
+//
+// The Neo4j sync happens *after* the Postgres commit, not inside the same
+// transaction -- Neo4j isn't part of that transaction, so there's nothing
+// to roll back there anyway. If it fails, the approval itself has still
+// succeeded (Postgres is the source of truth for the review workflow);
+// `curriculum.upload_jobs.neo4j_written` stays false so a failed sync is
+// visible and can be retried by simply calling approve again (idempotent).
 func (r *Repository) ApproveAndPromote(
 	ctx context.Context,
 	jobID uuid.UUID,
@@ -180,7 +206,8 @@ func (r *Repository) ApproveAndPromote(
 		return nil, fmt.Errorf("upsert subject %q: %w", subjectCode, err)
 	}
 
-	var unitsPromoted, topicsPromoted, closPromoted int
+	var topicsPromoted, closPromoted int
+	promotedUnits := make([]promotedUnit, 0, len(structure.Units))
 	moeVersion := fmt.Sprintf("ai-draft-%s", academicYear)
 
 	for _, u := range structure.Units {
@@ -194,7 +221,8 @@ func (r *Repository) ApproveAndPromote(
 		if err != nil {
 			return nil, fmt.Errorf("upsert unit %d (%q): %w", u.Number, u.TitleEn, err)
 		}
-		unitsPromoted++
+
+		pu := promotedUnit{id: unitID, number: u.Number, titleEn: u.TitleEn}
 
 		for _, t := range u.Topics {
 			var topicID uuid.UUID
@@ -212,6 +240,10 @@ func (r *Repository) ApproveAndPromote(
 				return nil, fmt.Errorf("upsert topic %q (unit %d): %w", t.TitleEn, u.Number, err)
 			}
 			topicsPromoted++
+
+			pu.topics = append(pu.topics, promotedTopic{
+				id: topicID, sequenceOrder: t.SequenceOrder, titleEn: t.TitleEn, keyConcepts: t.KeyConcepts,
+			})
 
 			for _, c := range t.Clos {
 				if c.Code == "" {
@@ -244,6 +276,8 @@ func (r *Repository) ApproveAndPromote(
 				closPromoted++
 			}
 		}
+
+		promotedUnits = append(promotedUnits, pu)
 	}
 
 	// 2. Mark the job approved, persisting the final (possibly edited)
@@ -267,12 +301,102 @@ func (r *Repository) ApproveAndPromote(
 		return nil, fmt.Errorf("commit tx: %w", err)
 	}
 
-	return &dto.ApproveResponse{
+	resp := &dto.ApproveResponse{
 		JobID:          jobID,
 		Status:         "approved",
 		SubjectCode:    subjectCode,
-		UnitsPromoted:  unitsPromoted,
+		UnitsPromoted:  len(promotedUnits),
 		TopicsPromoted: topicsPromoted,
 		ClosPromoted:   closPromoted,
-	}, nil
+	}
+
+	// Step 4: the relational data is now the source of truth (committed
+	// above) -- mirror it into the Knowledge Graph. This is deliberately
+	// outside the Postgres transaction: Neo4j can't participate in it, and
+	// the approval itself must not be undone just because the graph sync
+	// hiccuped. A failure here is recorded, not fatal to the request.
+	if err := r.syncCurriculumGraph(ctx, subjectCode, gradeLevel, academicYear, promotedUnits); err != nil {
+		resp.GraphSynced = false
+		resp.GraphSyncError = err.Error()
+		return resp, nil
+	}
+
+	if _, err := r.pool.Exec(ctx,
+		`UPDATE curriculum.upload_jobs SET neo4j_written = true WHERE id = $1`, jobID,
+	); err != nil {
+		// The graph write itself succeeded; only the bookkeeping flag
+		// failed to save. Still worth surfacing so it isn't silently lost.
+		resp.GraphSynced = false
+		resp.GraphSyncError = fmt.Sprintf("graph synced but failed to record neo4j_written: %v", err)
+		return resp, nil
+	}
+
+	resp.GraphSynced = true
+	return resp, nil
+}
+
+// syncCurriculumGraph mirrors an approved Subject -> Units -> Topics tree
+// into Neo4j as :Subject/:Unit/:Topic nodes connected by :HAS_UNIT and
+// :HAS_TOPIC relationships. Every write is a MERGE keyed on the same
+// Postgres-generated id (or subject code), so calling this again for the
+// same job -- e.g. retrying after a prior failure, simply by re-approving
+// -- updates the existing nodes rather than duplicating them.
+func (r *Repository) syncCurriculumGraph(
+	ctx context.Context,
+	subjectCode string,
+	gradeLevel int,
+	academicYear string,
+	units []promotedUnit,
+) error {
+	session := r.neo4j.NewSession(ctx, neo4jdriver.SessionConfig{AccessMode: neo4jdriver.AccessModeWrite})
+	defer session.Close(ctx)
+
+	for _, u := range units {
+		_, err := session.Run(ctx, `
+			MERGE (sub:Subject {code: $subjectCode})
+			SET sub.gradeLevel = $gradeLevel, sub.academicYear = $academicYear
+			MERGE (unit:Unit {id: $unitId})
+			SET unit.number = $number, unit.titleEn = $titleEn, unit.subjectCode = $subjectCode
+			MERGE (sub)-[:HAS_UNIT]->(unit)
+		`, map[string]any{
+			"subjectCode":  subjectCode,
+			"gradeLevel":   int64(gradeLevel),
+			"academicYear": academicYear,
+			"unitId":       u.id.String(),
+			"number":       int64(u.number),
+			"titleEn":      u.titleEn,
+		})
+		if err != nil {
+			return fmt.Errorf("sync unit %d to neo4j: %w", u.number, err)
+		}
+
+		for _, t := range u.topics {
+			keyConcepts := t.keyConcepts
+			if keyConcepts == nil {
+				keyConcepts = []string{}
+			}
+			_, err := session.Run(ctx, `
+				MATCH (unit:Unit {id: $unitId})
+				MERGE (topic:Topic {id: $topicId})
+				SET topic.titleEn = $titleEn,
+				    topic.sequenceOrder = $sequenceOrder,
+				    topic.keyConcepts = $keyConcepts,
+				    topic.subjectCode = $subjectCode,
+				    topic.gradeLevel = $gradeLevel
+				MERGE (unit)-[:HAS_TOPIC]->(topic)
+			`, map[string]any{
+				"unitId":        u.id.String(),
+				"topicId":       t.id.String(),
+				"titleEn":       t.titleEn,
+				"sequenceOrder": int64(t.sequenceOrder),
+				"keyConcepts":   keyConcepts,
+				"subjectCode":   subjectCode,
+				"gradeLevel":    int64(gradeLevel),
+			})
+			if err != nil {
+				return fmt.Errorf("sync topic %q (unit %d) to neo4j: %w", t.titleEn, u.number, err)
+			}
+		}
+	}
+	return nil
 }

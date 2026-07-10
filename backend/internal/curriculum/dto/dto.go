@@ -93,7 +93,14 @@ type ApproveRequest struct {
 	ParsedStructure *ParsedStructurePayload `json:"parsedStructure,omitempty"`
 }
 
-// ApproveResponse summarizes what got promoted into the real curriculum tables.
+// ApproveResponse summarizes what got promoted into the real curriculum
+// tables (Step 3) and whether the Knowledge Graph mirror succeeded (Step 4).
+//
+// GraphSynced is deliberately independent of the HTTP status: the approval
+// itself (Postgres promotion) is the source of truth for the review
+// workflow and can succeed even if the Neo4j sync fails. When GraphSynced
+// is false, curriculum.upload_jobs.neo4j_written stays false too, and
+// simply calling approve again (safe/idempotent) retries the graph sync.
 type ApproveResponse struct {
 	JobID          uuid.UUID `json:"jobId"`
 	Status         string    `json:"status"`
@@ -101,4 +108,6 @@ type ApproveResponse struct {
 	UnitsPromoted  int       `json:"unitsPromoted"`
 	TopicsPromoted int       `json:"topicsPromoted"`
 	ClosPromoted   int       `json:"closPromoted"`
+	GraphSynced    bool      `json:"graphSynced"`
+	GraphSyncError string    `json:"graphSyncError,omitempty"`
 }

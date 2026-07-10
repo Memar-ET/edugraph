@@ -158,7 +158,7 @@ func main() {
 	storageProvider := storagepkg.NewPostgresStorage(pgPool)
 
 	// 2. Initialize Curriculum Domain
-	curriculumRepo := curriculumrepo.New(pgPool)
+	curriculumRepo := curriculumrepo.New(pgPool, neo4jDriver)
 	curriculumService := curriculumsvc.New(curriculumRepo, storageProvider, redisClient)
 	curriculumHandler := curriculumhandler.New(curriculumService)
 
