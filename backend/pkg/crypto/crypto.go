@@ -19,8 +19,13 @@ import (
 
 // ── Passwords ──────────────────────────────────────────────────
 
+// bcryptCost is set above bcrypt.DefaultCost (10) to match the minimum cost
+// mandated by the DB design doc (identity.users.password_hash: "bcrypt hash,
+// cost 12 minimum").
+const bcryptCost = 12
+
 func HashPassword(password string) (string, error) {
-	hash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
+	hash, err := bcrypt.GenerateFromPassword([]byte(password), bcryptCost)
 	if err != nil {
 		return "", fmt.Errorf("hash password: %w", err)
 	}

@@ -66,11 +66,15 @@ type ParsedTopic struct {
 	RawText          string      `json:"rawText"`
 }
 
-// ParsedUnit mirrors a curriculum.units row.
+// ParsedUnit mirrors a curriculum.units row. Metadata carries extra fields
+// lifted from a unit's metadata table (subjectCode, focus,
+// indicativeCloCount, ...) that don't map to a curriculum.units column --
+// kept for the officer's review context, not promoted into Postgres.
 type ParsedUnit struct {
-	Number  int           `json:"number" validate:"required"`
-	TitleEn string        `json:"titleEn" validate:"required"`
-	Topics  []ParsedTopic `json:"topics"`
+	Number   int               `json:"number" validate:"required"`
+	TitleEn  string            `json:"titleEn" validate:"required"`
+	Topics   []ParsedTopic     `json:"topics"`
+	Metadata map[string]string `json:"metadata,omitempty"`
 }
 
 // ParsedStructurePayload is the full tree, matching upload_jobs.parsed_structure.

@@ -1,6 +1,15 @@
-import { defineConfig } from 'vite'
+import path from 'node:path'
+
 import react from '@vitejs/plugin-react'
-import path from 'path'
+// vitest/config re-exports defineConfig with the `test` key merged into
+// Vite's UserConfig type -- importing from plain 'vite' here makes `test`
+// below a type error under `tsc -b`.
+import { defineConfig } from 'vitest/config'
+
+// API_PROXY_TARGET lets docker-compose point the dev-server proxy at the
+// `api` service by its container DNS name (http://api:8080) while local
+// `npm run dev` outside Docker keeps working against http://localhost:8080.
+const apiProxyTarget = process.env.API_PROXY_TARGET ?? 'http://localhost:8080'
 
 export default defineConfig({
   plugins: [react()],
@@ -12,7 +21,6 @@ export default defineConfig({
       '@hooks': path.resolve(__dirname, './src/hooks'),
       '@lib': path.resolve(__dirname, './src/lib'),
       '@stores': path.resolve(__dirname, './src/stores'),
-      '@types': path.resolve(__dirname, './src/types'),
     },
   },
   server: {
@@ -20,11 +28,11 @@ export default defineConfig({
     host: true,
     proxy: {
       '/api': {
-        target: 'http://localhost:8080',
+        target: apiProxyTarget,
         changeOrigin: true,
       },
       '/ws': {
-        target: 'ws://localhost:8080',
+        target: apiProxyTarget.replace(/^http/, 'ws'),
         ws: true,
       },
     },

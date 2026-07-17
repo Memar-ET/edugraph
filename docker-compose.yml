@@ -93,8 +93,11 @@ services:
       - /app/node_modules
 
     environment:
-      VITE_API_URL: ${AI_SERVICE_URL}
-      VITE_AI_URL: ${AI_SERVICE_URL}
+      # Frontend code calls relative /api/v1/* paths; the Vite dev-server
+      # proxy (vite.config.ts) forwards them to the Go api container. This
+      # was previously (incorrectly) pointed at AI_SERVICE_URL, which would
+      # have sent every backend call to the Python service instead of Go.
+      API_PROXY_TARGET: http://api:8080
 
     restart: unless-stopped
 
