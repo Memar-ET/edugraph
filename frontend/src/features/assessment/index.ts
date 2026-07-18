@@ -1,0 +1,5 @@
+export { ExamUploadPage } from './ExamUploadPage'
+export { ExamReviewPage } from './ExamReviewPage'
+export { GradeExamPage } from './GradeExamPage'
+export { StudentExamListPage } from './StudentExamListPage'
+export { TakeExamPage } from './TakeExamPage'

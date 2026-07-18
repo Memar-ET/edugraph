@@ -65,6 +65,7 @@ services:
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       EMBEDDING_MODEL: ${EMBEDDING_MODEL}
+      GEMINI_API_KEY: ${GEMINI_API_KEY}
 
     depends_on:
       postgres:

@@ -108,9 +108,17 @@ func newRouter(cfg config.Config, log *zap.Logger, verifier middleware.TokenVeri
 				r.With(middleware.RequireRole(roleSchoolAdmin, roleTeacher)).Patch("/{id}", h.student.Update)
 				r.With(middleware.RequireRole(roleSchoolAdmin)).Delete("/{id}", h.student.Delete)
 
-				r.Get("/{studentID}/results", h.assessment.ResultsByStudent)
 				r.Post("/{studentID}/career/generate", h.career.Generate)
 				r.Get("/{studentID}/career/matches", h.career.Matches)
+
+				// Capability 3A: Subject Health Layer for the
+				// authenticated student's own dashboard. Static "me"
+				// takes precedence over the {id} param route in chi.
+				r.With(middleware.RequireRole(roleStudent)).Get("/me/subject-profiles", h.assessment.GetMySubjectProfiles)
+
+				// Capability 3B: study plans generated from gap records.
+				r.With(middleware.RequireRole(roleStudent)).Post("/me/study-plans", h.assessment.GenerateStudyPlan)
+				r.With(middleware.RequireRole(roleStudent)).Get("/me/study-plans", h.assessment.ListMyStudyPlans)
 			})
 
 			// ── Teachers ──────────────────────────────────────
@@ -137,18 +145,31 @@ func newRouter(cfg config.Config, log *zap.Logger, verifier middleware.TokenVeri
 				r.With(middleware.RequireRole(roleMinistryAdmin, roleTeacher)).Post("/units", h.curriculum.CreateUnit)
 				r.With(middleware.RequireRole(roleMinistryAdmin, roleTeacher)).Patch("/units/{id}", h.curriculum.UpdateUnit)
 				r.With(middleware.RequireRole(roleMinistryAdmin)).Delete("/units/{id}", h.curriculum.DeleteUnit)
-				r.With(middleware.RequireRole(roleMinistryAdmin, roleTeacher)).Post("/units/{id}/prerequisites", h.curriculum.AddPrerequisite)
+				// Topic prerequisite graph (feeds 3A root causes + 3B topo sort).
+				r.With(middleware.RequireRole(roleMinistryAdmin, roleTeacher, roleCurriculumOfficer)).Post("/topics/{id}/prerequisites", h.curriculum.AddTopicPrerequisite)
+				r.Get("/topics/{id}/prerequisites", h.curriculum.ListTopicPrerequisites)
 			})
 
-			// ── Assessments ─────────────────────────────────────
-			r.Route("/assessments", func(r chi.Router) {
-				r.Get("/", h.assessment.List)
-				r.Get("/{id}", h.assessment.Get)
-				r.Get("/{id}/questions", h.assessment.ListQuestions)
-				r.With(middleware.RequireRole(roleTeacher, roleSchoolAdmin)).Post("/", h.assessment.Create)
-				r.With(middleware.RequireRole(roleTeacher)).Post("/{id}/questions", h.assessment.AddQuestion)
-				r.With(middleware.RequireRole(roleStudent)).Post("/{id}/submit", h.assessment.Submit)
-				r.With(middleware.RequireRole(roleTeacher, roleSchoolAdmin)).Get("/{id}/results", h.assessment.ResultsByAssessment)
+			// ── Exams (Capability 2A: upload + AI parsing; 2B: AI validation report; 2C: submission) ──
+			r.Route("/exams", func(r chi.Router) {
+				r.With(middleware.RequireRole(roleTeacher, roleSchoolAdmin)).Post("/upload", h.assessment.UploadExam)
+				r.With(middleware.RequireRole(roleTeacher, roleSchoolAdmin)).Get("/{id}", h.assessment.GetExam)
+				r.With(middleware.RequireRole(roleTeacher, roleSchoolAdmin)).Post("/{id}/validate", h.assessment.ValidateExam)
+				r.With(middleware.RequireRole(roleTeacher, roleSchoolAdmin)).Post("/{id}/publish", h.assessment.PublishExam)
+				r.With(middleware.RequireRole(roleTeacher, roleSchoolAdmin)).Post("/{id}/answer-key", h.assessment.UploadAnswerKey)
+				r.With(middleware.RequireRole(roleStudent)).Get("/{id}/questions", h.assessment.ListExamQuestions)
+				r.With(middleware.RequireRole(roleStudent)).Post("/{id}/submit", h.assessment.SubmitExam)
+				r.With(middleware.RequireRole(roleTeacher, roleSchoolAdmin)).Post("/{id}/grades/bulk", h.assessment.BulkGradeExam)
+				r.With(middleware.RequireRole(roleTeacher, roleSchoolAdmin)).Get("/{id}/grading-questions", h.assessment.ListQuestionsForGrading)
+				// Capability 3A: gap-analysis insight reads (written
+				// asynchronously by the ai-service gap worker).
+				r.With(middleware.RequireRole(roleStudent)).Get("/{id}/my-insight", h.assessment.GetMyExamInsight)
+				r.With(middleware.RequireRole(roleTeacher, roleSchoolAdmin)).Get("/{id}/insights", h.assessment.ListExamInsights)
+			})
+
+			// ── AI Tutor (Capability 3C: Graph-RAG + Gemini) ──
+			r.Route("/tutor", func(r chi.Router) {
+				r.With(middleware.RequireRole(roleStudent)).Post("/ask", h.assessment.AskTutor)
 			})
 
 			// ── Career ────────────────────────────────────────

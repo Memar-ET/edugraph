@@ -7,7 +7,7 @@ import { login } from '@lib/api/endpoints'
 import { apiErrorMessage } from '@lib/api/client'
 import { loginSchema, type LoginFormValues } from '@lib/validations/auth'
 import { Banner, Button, Card, CardContent, CardHeader, CardTitle, Input, Label } from '@components/ui'
-import { canAccessCurriculumReview, useAuthStore } from '@stores/auth.store'
+import { landingPathFor, useAuthStore } from '@stores/auth.store'
 
 export function LoginPage() {
   const navigate = useNavigate()
@@ -25,9 +25,7 @@ export function LoginPage() {
     try {
       const auth = await login(values)
       setAuth(auth)
-      void navigate({
-        to: canAccessCurriculumReview(auth.user.role) ? '/curriculum/upload' : '/',
-      })
+      void navigate({ to: landingPathFor(auth.user.role) })
     } catch (err) {
       setServerError(apiErrorMessage(err, 'Invalid email or password.'))
     }

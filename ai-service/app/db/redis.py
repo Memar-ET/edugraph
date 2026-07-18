@@ -20,6 +20,19 @@ import redis.asyncio as redis
 from app.core.config import settings
 
 CURRICULUM_PARSE_QUEUE = "queue:curriculum:parse"
+EXAM_PARSE_QUEUE = "queue:exam:parse"
+# Unlike the other two queues, this one's payload is a small JSON object
+# ({"examId": ..., "fileRef": ...}), not a bare id string -- a separate
+# answer-key upload needs both which exam to apply it to and where its
+# file bytes live. See app/workers/answer_key_worker.py.
+EXAM_ANSWERKEY_QUEUE = "queue:exam:answerkey"
+# Capability 3A: attempt ids pushed by the Go side the moment an exam
+# attempt becomes fully graded -- consumed by app/workers/gap_worker.py.
+GAP_ANALYZE_QUEUE = "queue:gap:analyze"
+# Capability 3B: JSON payload ({"studentId", "schoolId", "targetExamId",
+# "language"}) pushed when a student requests a study plan -- consumed by
+# app/workers/study_plan_worker.py.
+STUDYPLAN_QUEUE = "queue:studyplan:generate"
 
 _client: Optional[redis.Redis] = None
 

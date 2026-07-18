@@ -36,3 +36,23 @@ export const useAuthStore = create<AuthState>()(
 export function canAccessCurriculumReview(role: string | undefined): boolean {
   return role === 'curriculum_officer' || role === 'ministry_admin'
 }
+
+// Capability 2A/2B: exam upload, validate, publish.
+export function canAccessTeacherDashboard(role: string | undefined): boolean {
+  return role === 'teacher' || role === 'school_admin'
+}
+
+// Capability 2C Flow 1: exam-taking.
+export function canAccessStudentDashboard(role: string | undefined): boolean {
+  return role === 'student'
+}
+
+// Single source of truth for "where does this role land after login" --
+// used by both LoginPage's post-login redirect and the router's
+// already-authenticated guards on / and /login.
+export function landingPathFor(role: string | undefined): string {
+  if (canAccessCurriculumReview(role)) return '/curriculum/upload'
+  if (canAccessTeacherDashboard(role)) return '/teacher/exams/upload'
+  if (canAccessStudentDashboard(role)) return '/student/exams'
+  return '/'
+}

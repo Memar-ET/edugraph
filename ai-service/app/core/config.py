@@ -29,6 +29,10 @@ class Settings(BaseSettings):
     AI_SERVICE_URL: str = "ai-service:8000"
     OLLAMA_HOST: str = "ollama:11434"
     EMBEDDING_MODEL: str = "intfloat/multilingual-e5-large"
+    # Capability 2A: Gemini-backed CLO matcher (exam_parser/clo_matcher_llm.py).
+    # Empty means "not configured" -- the parser falls back to the plain
+    # keyword matcher, never a hard failure.
+    GEMINI_API_KEY: str = ""
 
     @property
     def POSTGRES_DSN(self) -> str:

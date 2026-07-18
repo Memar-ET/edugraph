@@ -5,8 +5,8 @@
     "semantic_hash": "c2aa74a30a7711c778de6f0401264bbf"
   },
   ".claude/settings.local.json": {
-    "mtime": 1784321356.5826995,
-    "ast_hash": "cdf931d8f637fc53540cd9897647bf14",
+    "mtime": 1784375887.531204,
+    "ast_hash": "0442b7080c5302af1519351370798850",
     "semantic_hash": ""
   },
   "ai-service/app/api/__init__.py": {
@@ -55,9 +55,9 @@
     "semantic_hash": "d41d8cd98f00b204e9800998ecf8427e"
   },
   "ai-service/app/core/config.py": {
-    "mtime": 1783503568.8920426,
-    "ast_hash": "d679b38c2800639804b3af281775f06c",
-    "semantic_hash": "d679b38c2800639804b3af281775f06c"
+    "mtime": 1784362194.975088,
+    "ast_hash": "0a5e67c1b52fcb056ad771034640b94e",
+    "semantic_hash": ""
   },
   "ai-service/app/core/dependencies.py": {
     "mtime": 1783503568.902042,
@@ -75,9 +75,9 @@
     "semantic_hash": "d41d8cd98f00b204e9800998ecf8427e"
   },
   "ai-service/app/db/neo4j.py": {
-    "mtime": 1783503568.8199294,
-    "ast_hash": "d41d8cd98f00b204e9800998ecf8427e",
-    "semantic_hash": "d41d8cd98f00b204e9800998ecf8427e"
+    "mtime": 1784376475.0677958,
+    "ast_hash": "6fce8d9f913cb745ac89975bc87380b9",
+    "semantic_hash": ""
   },
   "ai-service/app/db/pgvector.py": {
     "mtime": 1783503568.7888622,
@@ -90,14 +90,14 @@
     "semantic_hash": "5cf96c7133c61a6995b64a896e56eab7"
   },
   "ai-service/app/db/redis.py": {
-    "mtime": 1783503568.809852,
-    "ast_hash": "9ad0925389b07de7de18c3fa9d1e1451",
-    "semantic_hash": "9ad0925389b07de7de18c3fa9d1e1451"
+    "mtime": 1784376657.9867017,
+    "ast_hash": "a475cc53a05f3b41e711695d71e3c899",
+    "semantic_hash": ""
   },
   "ai-service/app/main.py": {
-    "mtime": 1783503568.3420262,
-    "ast_hash": "82ed3bf2c64c5651b2cf4a7cf116d816",
-    "semantic_hash": "82ed3bf2c64c5651b2cf4a7cf116d816"
+    "mtime": 1784376665.3485932,
+    "ast_hash": "d9bbc717774fb5299be0ac0c3bd1d05f",
+    "semantic_hash": ""
   },
   "ai-service/app/models/career.py": {
     "mtime": 1783503568.7512681,
@@ -150,13 +150,13 @@
     "semantic_hash": "d41d8cd98f00b204e9800998ecf8427e"
   },
   "ai-service/app/services/curriculum_parser/docx_extractor.py": {
-    "mtime": 1784321521.0838122,
-    "ast_hash": "237f54307f34e7aa10f853152dcf139d",
+    "mtime": 1784323543.2420347,
+    "ast_hash": "63c899e4b5479cbe818bef6c632c7200",
     "semantic_hash": ""
   },
   "ai-service/app/services/curriculum_parser/extractor.py": {
-    "mtime": 1784321623.3743813,
-    "ast_hash": "cc7351f60af0030ccf2a7bcb8c8f49af",
+    "mtime": 1784323532.3738348,
+    "ast_hash": "b11febbc7f08b3149cf134b6d464b7e1",
     "semantic_hash": ""
   },
   "ai-service/app/services/curriculum_parser/service.py": {
@@ -250,9 +250,9 @@
     "semantic_hash": "d41d8cd98f00b204e9800998ecf8427e"
   },
   "ai-service/app/workers/gap_worker.py": {
-    "mtime": 1783503568.8755019,
-    "ast_hash": "d41d8cd98f00b204e9800998ecf8427e",
-    "semantic_hash": "d41d8cd98f00b204e9800998ecf8427e"
+    "mtime": 1784376655.6714497,
+    "ast_hash": "f1f347727cced5589fd8e2320b5f01d6",
+    "semantic_hash": ""
   },
   "ai-service/app/workers/report_worker.py": {
     "mtime": 1783503568.845572,
@@ -270,14 +270,14 @@
     "semantic_hash": "d41d8cd98f00b204e9800998ecf8427e"
   },
   "backend/cmd/api/main.go": {
-    "mtime": 1783698680.07651,
-    "ast_hash": "4bdc5ea8b4f1d11368c5a381f5b51a53",
-    "semantic_hash": "4bdc5ea8b4f1d11368c5a381f5b51a53"
+    "mtime": 1784337139.9990861,
+    "ast_hash": "85636ed3b80f8526abf18c3a41af2679",
+    "semantic_hash": ""
   },
   "backend/cmd/api/router.go": {
-    "mtime": 1783698680.0904534,
-    "ast_hash": "3e544873a36c027386904801205a0601",
-    "semantic_hash": "3e544873a36c027386904801205a0601"
+    "mtime": 1784376787.2594414,
+    "ast_hash": "4004ae5d62a161558f19a159a87d0e57",
+    "semantic_hash": ""
   },
   "backend/cmd/migrate/main.go": {
     "mtime": 1783698680.101611,
@@ -379,25 +379,20 @@
     "ast_hash": "63b8a2bf73890d3a84ce42b359f7a020",
     "semantic_hash": "63b8a2bf73890d3a84ce42b359f7a020"
   },
-  "backend/internal/assessment/dto/dto.go": {
-    "mtime": 1783698680.558277,
-    "ast_hash": "866c4302949028eb649db6be9be60107",
-    "semantic_hash": "866c4302949028eb649db6be9be60107"
-  },
   "backend/internal/assessment/handler/handler.go": {
-    "mtime": 1783698680.5805175,
-    "ast_hash": "6a3fba16ebdad3b4ca9986131c4f1999",
-    "semantic_hash": "6a3fba16ebdad3b4ca9986131c4f1999"
+    "mtime": 1784337208.8075986,
+    "ast_hash": "e64c64eda4ba7576fe30fe8797107da9",
+    "semantic_hash": ""
   },
   "backend/internal/assessment/repository/repository.go": {
-    "mtime": 1783698680.5692728,
-    "ast_hash": "a80a14d6694c97812581990e392beb8d",
-    "semantic_hash": "a80a14d6694c97812581990e392beb8d"
+    "mtime": 1784337191.2786376,
+    "ast_hash": "81a5285989721e27092ab345c3748335",
+    "semantic_hash": ""
   },
   "backend/internal/assessment/service/service.go": {
-    "mtime": 1783698680.5922441,
-    "ast_hash": "1e8b7db680f3e6b6a522fb85b22bd46f",
-    "semantic_hash": "1e8b7db680f3e6b6a522fb85b22bd46f"
+    "mtime": 1784337201.2043307,
+    "ast_hash": "a234e4f8735d9e7c1661d7d4de8bf90f",
+    "semantic_hash": ""
   },
   "backend/internal/auth/dto/dto.go": {
     "mtime": 1783698680.4687734,
@@ -445,9 +440,9 @@
     "semantic_hash": ""
   },
   "backend/internal/curriculum/handler/handler.go": {
-    "mtime": 1784303667.0399208,
-    "ast_hash": "7509c4f99c783e89e1f01e0264996d4b",
-    "semantic_hash": "7509c4f99c783e89e1f01e0264996d4b"
+    "mtime": 1784328587.6002202,
+    "ast_hash": "fc097d67639ea987eb4d37f725be0000",
+    "semantic_hash": ""
   },
   "backend/internal/curriculum/repository/repository.go": {
     "mtime": 1783698680.7055533,
@@ -750,9 +745,9 @@
     "semantic_hash": "efcb538f2aa95fe444d4836ef983be50"
   },
   "frontend/src/app/router.tsx": {
-    "mtime": 1784304976.2650182,
-    "ast_hash": "7db32105aa43700b05b55452114f5766",
-    "semantic_hash": "7db32105aa43700b05b55452114f5766"
+    "mtime": 1784359134.8754573,
+    "ast_hash": "75c813388ae774dbb7f4a8d9f71da968",
+    "semantic_hash": ""
   },
   "frontend/src/components/charts/index.ts": {
     "mtime": 1782979483.2702267,
@@ -835,9 +830,9 @@
     "semantic_hash": "20ea9b7fc5af6415a0623a6f4641ca46"
   },
   "frontend/src/lib/api/endpoints.ts": {
-    "mtime": 1784304637.106979,
-    "ast_hash": "b9d94b7e0bd3ef493c9f8ff38f81e38f",
-    "semantic_hash": "b9d94b7e0bd3ef493c9f8ff38f81e38f"
+    "mtime": 1784359443.6211834,
+    "ast_hash": "c03b907b5e4c71ec251c02c7e2a8262f",
+    "semantic_hash": ""
   },
   "frontend/src/lib/api/interceptors.ts": {
     "mtime": 1782979483.2752233,
@@ -850,9 +845,9 @@
     "semantic_hash": "d08f0d91071b9c59ac5c251ceed08053"
   },
   "frontend/src/lib/query/keys.ts": {
-    "mtime": 1784304056.6057258,
-    "ast_hash": "48811a1320e2c1d421b1a5592f5fdfca",
-    "semantic_hash": "48811a1320e2c1d421b1a5592f5fdfca"
+    "mtime": 1784359468.047009,
+    "ast_hash": "bb751c00a9799b89e9bbd8245aa253ed",
+    "semantic_hash": ""
   },
   "frontend/src/lib/utils/cn.ts": {
     "mtime": 1784304049.998121,
@@ -875,9 +870,9 @@
     "semantic_hash": "70bfa10108c366a7b4e8751bddc57610"
   },
   "frontend/src/lib/validations/exam.ts": {
-    "mtime": 1782979483.2772253,
-    "ast_hash": "d41d8cd98f00b204e9800998ecf8427e",
-    "semantic_hash": "d41d8cd98f00b204e9800998ecf8427e"
+    "mtime": 1784359516.6194263,
+    "ast_hash": "96d627b6f06daf3d4219250ea7aec9dc",
+    "semantic_hash": ""
   },
   "frontend/src/lib/validations/student.ts": {
     "mtime": 1782979483.2772253,
@@ -890,9 +885,9 @@
     "semantic_hash": "1e8b7889298a3e525e54d10395f04a87"
   },
   "frontend/src/stores/auth.store.ts": {
-    "mtime": 1784304637.1848805,
-    "ast_hash": "1a91c6f2a1e307d5c72cf80441c5bd9a",
-    "semantic_hash": "1a91c6f2a1e307d5c72cf80441c5bd9a"
+    "mtime": 1784359126.3774998,
+    "ast_hash": "f3a23393c33a58459ed42ef35e886202",
+    "semantic_hash": ""
   },
   "frontend/src/stores/offline.store.ts": {
     "mtime": 1782979483.2782266,
@@ -905,8 +900,8 @@
     "semantic_hash": "d41d8cd98f00b204e9800998ecf8427e"
   },
   "frontend/src/types/api.ts": {
-    "mtime": 1784320789.5145793,
-    "ast_hash": "2435027d37a3e6ed4dad034817a97c91",
+    "mtime": 1784361689.8690736,
+    "ast_hash": "59f38cddc0033e52847aeb84e6914849",
     "semantic_hash": ""
   },
   "frontend/src/types/common.ts": {
@@ -1335,9 +1330,9 @@
     "semantic_hash": "d41d8cd98f00b204e9800998ecf8427e"
   },
   "docker-compose.yml": {
-    "mtime": 1784304036.7572286,
-    "ast_hash": "58e8ca895b981fa3a1c0d65a7e4c6071",
-    "semantic_hash": "58e8ca895b981fa3a1c0d65a7e4c6071"
+    "mtime": 1784362186.4420898,
+    "ast_hash": "ecf271100217492a002ffae9f060759c",
+    "semantic_hash": ""
   },
   "docs/adr/ADR-00001.md": {
     "mtime": 1782979483.2632039,
@@ -1540,9 +1535,9 @@
     "semantic_hash": "77d1dd3b581ef782f601299a89256925"
   },
   "frontend/src/features/auth/LoginPage.tsx": {
-    "mtime": 1784304163.2002,
-    "ast_hash": "91b60414975a5039801f0927d5ca12e0",
-    "semantic_hash": "91b60414975a5039801f0927d5ca12e0"
+    "mtime": 1784359155.050784,
+    "ast_hash": "2daf4e65a9447d6a4663eedfb9a727ea",
+    "semantic_hash": ""
   },
   "frontend/src/features/curriculum/JobReviewPage.tsx": {
     "mtime": 1784320798.9892704,
@@ -1569,24 +1564,294 @@
     "ast_hash": "994c5bf3f0f8742b450d0ab09b0d6bb9",
     "semantic_hash": "994c5bf3f0f8742b450d0ab09b0d6bb9"
   },
+  "ai-service/app/db/postgres_assessment.py": {
+    "mtime": 1784362306.281639,
+    "ast_hash": "e78e0533514589d4b388f87af522cbaa",
+    "semantic_hash": ""
+  },
+  "ai-service/app/services/exam_parser/__init__.py": {
+    "mtime": 1784328955.7084394,
+    "ast_hash": "d41d8cd98f00b204e9800998ecf8427e",
+    "semantic_hash": ""
+  },
+  "ai-service/app/services/exam_parser/clo_matcher.py": {
+    "mtime": 1784331617.0794551,
+    "ast_hash": "7f5319df18aee11dc8b6a82e8e62b7db",
+    "semantic_hash": ""
+  },
+  "ai-service/app/services/exam_parser/docx_extractor.py": {
+    "mtime": 1784328931.6228387,
+    "ast_hash": "437f0a68cb0a702442a1503f34e8a71f",
+    "semantic_hash": ""
+  },
+  "ai-service/app/services/exam_parser/extractor.py": {
+    "mtime": 1784361454.148356,
+    "ast_hash": "fd1791c048444ec05e821f58c2840850",
+    "semantic_hash": ""
+  },
+  "ai-service/app/services/exam_parser/metadata.py": {
+    "mtime": 1784333054.2749252,
+    "ast_hash": "6e68cb9731222618fe32235899c2bcd2",
+    "semantic_hash": ""
+  },
+  "ai-service/app/services/exam_parser/service.py": {
+    "mtime": 1784362290.1146421,
+    "ast_hash": "86e94bc5d8f2a94a0c14463d80af5913",
+    "semantic_hash": ""
+  },
+  "ai-service/app/workers/exam_worker.py": {
+    "mtime": 1784328976.4538636,
+    "ast_hash": "6da837a19d24b184d5797ea50f272259",
+    "semantic_hash": ""
+  },
+  "backend/db/migrations/V017__exam_scope_and_parsing.sql": {
+    "mtime": 1784328477.3310297,
+    "ast_hash": "aee366faef732690e09f70b631fa7f2e",
+    "semantic_hash": ""
+  },
+  "backend/db/migrations/V018__exam_clo_align_method.sql": {
+    "mtime": 1784331477.473411,
+    "ast_hash": "5d595a5f93410459b2f9eeb0be76e1ae",
+    "semantic_hash": ""
+  },
+  "backend/internal/assessment/dto/exam_upload.go": {
+    "mtime": 1784333334.5682333,
+    "ast_hash": "a4dc22c9d25432f43ed9fbd27d1e5fb7",
+    "semantic_hash": ""
+  },
+  "backend/internal/assessment/handler/exam_upload.go": {
+    "mtime": 1784328741.379379,
+    "ast_hash": "fe67893ec169511bfaa7938e245adc49",
+    "semantic_hash": ""
+  },
+  "backend/internal/assessment/repository/exam_upload.go": {
+    "mtime": 1784333395.983919,
+    "ast_hash": "5d07c2397abaded2ed7b5a1c0d645eca",
+    "semantic_hash": ""
+  },
+  "backend/internal/assessment/service/exam_upload.go": {
+    "mtime": 1784332848.8532877,
+    "ast_hash": "25688017b6104c4dd45b25e92b9fb3d8",
+    "semantic_hash": ""
+  },
+  "backend/internal/assessment/service/title_parser.go": {
+    "mtime": 1784332827.408248,
+    "ast_hash": "fee4903b41b5f79a75e88d8434d3e8da",
+    "semantic_hash": ""
+  },
+  "backend/pkg/fileformat/sniff.go": {
+    "mtime": 1784328531.2532294,
+    "ast_hash": "0debef56ab55c60cf4426d33ee837c30",
+    "semantic_hash": ""
+  },
+  "backend/db/migrations/V019__exam_validation.sql": {
+    "mtime": 1784332782.046796,
+    "ast_hash": "34036f72e7c93fc8ed1aaff5c32a78c5",
+    "semantic_hash": ""
+  },
+  "backend/internal/assessment/dto/exam_validate.go": {
+    "mtime": 1784333300.7920175,
+    "ast_hash": "4f73a414acee30cf736e35c2472cbd12",
+    "semantic_hash": ""
+  },
+  "backend/internal/assessment/handler/exam_validate.go": {
+    "mtime": 1784333516.9823034,
+    "ast_hash": "06348c2d9f067df6df3b506b06a5b723",
+    "semantic_hash": ""
+  },
+  "backend/internal/assessment/repository/exam_validate.go": {
+    "mtime": 1784336797.2642457,
+    "ast_hash": "e8ad76730c29fc256348178abd83608a",
+    "semantic_hash": ""
+  },
+  "backend/internal/assessment/service/exam_validate.go": {
+    "mtime": 1784333476.0802937,
+    "ast_hash": "7b877b255617966ab4eb7fd5f793dcdd",
+    "semantic_hash": ""
+  },
+  "ai-service/app/services/exam_parser/answer_key.py": {
+    "mtime": 1784335750.2999258,
+    "ast_hash": "5fbdfc98008617c57bc9a9dab266e166",
+    "semantic_hash": ""
+  },
+  "ai-service/app/services/exam_parser/answer_key_job.py": {
+    "mtime": 1784336301.6778903,
+    "ast_hash": "15f438cd97881ed3b4444f4662ab7582",
+    "semantic_hash": ""
+  },
+  "ai-service/app/workers/answer_key_worker.py": {
+    "mtime": 1784336318.8486633,
+    "ast_hash": "270b9e161c1abab3eb65c550bb59922c",
+    "semantic_hash": ""
+  },
+  "backend/db/migrations/V020__student_answers_unique.sql": {
+    "mtime": 1784335639.982809,
+    "ast_hash": "68991d7675b9e1f96f4f48891c4d9fa9",
+    "semantic_hash": ""
+  },
+  "backend/internal/assessment/dto/exam_answer_key.go": {
+    "mtime": 1784336440.3910282,
+    "ast_hash": "894fb875165d532f82bd5cec109dbd5e",
+    "semantic_hash": ""
+  },
+  "backend/internal/assessment/dto/exam_submit.go": {
+    "mtime": 1784336842.1054268,
+    "ast_hash": "70cded4bb8a18400c6f55ff709706c68",
+    "semantic_hash": ""
+  },
+  "backend/internal/assessment/handler/exam_answer_key.go": {
+    "mtime": 1784336506.0743332,
+    "ast_hash": "7868a6d8b8d8433ef512507816a82407",
+    "semantic_hash": ""
+  },
+  "backend/internal/assessment/handler/exam_submit.go": {
+    "mtime": 1784359313.2496147,
+    "ast_hash": "17faf92a88c44bed8a5ab47ca4ed067c",
+    "semantic_hash": ""
+  },
+  "backend/internal/assessment/repository/exam_submit.go": {
+    "mtime": 1784361632.4903398,
+    "ast_hash": "b0155602ae4921c554fc368a3ebbb4d0",
+    "semantic_hash": ""
+  },
+  "backend/internal/assessment/repository/exam_sync.go": {
+    "mtime": 1784337032.5910363,
+    "ast_hash": "6f38df3231c3a82288856fef6ddd851a",
+    "semantic_hash": ""
+  },
+  "backend/internal/assessment/service/exam_answer_key.go": {
+    "mtime": 1784336462.002295,
+    "ast_hash": "e3dbf28acebacdef8935dd8a65ce99da",
+    "semantic_hash": ""
+  },
+  "backend/internal/assessment/service/exam_submit.go": {
+    "mtime": 1784376684.3654902,
+    "ast_hash": "d2705a7ec656d0a5b3eaba2f5f09e023",
+    "semantic_hash": ""
+  },
+  "backend/internal/assessment/syncworker/worker.go": {
+    "mtime": 1784337052.4084256,
+    "ast_hash": "66756db1456c88d61de91de039f7372c",
+    "semantic_hash": ""
+  },
+  "backend/internal/assessment/dto/exam_questions.go": {
+    "mtime": 1784361570.1856222,
+    "ast_hash": "97b278a25f579635e5aac98f1e72ea0b",
+    "semantic_hash": ""
+  },
+  "backend/internal/assessment/repository/exam_questions.go": {
+    "mtime": 1784361590.7906053,
+    "ast_hash": "84f6df94bcd83d1413c93a32c5708020",
+    "semantic_hash": ""
+  },
+  "frontend/src/features/assessment/ExamReviewPage.tsx": {
+    "mtime": 1784359596.1549082,
+    "ast_hash": "0192f72b83d33d4b9b8908c5cafce7ed",
+    "semantic_hash": ""
+  },
+  "frontend/src/features/assessment/ExamUploadPage.tsx": {
+    "mtime": 1784359545.272096,
+    "ast_hash": "39ab3fe84b7d63465e3255dc84d02402",
+    "semantic_hash": ""
+  },
+  "frontend/src/features/assessment/GradeExamPage.tsx": {
+    "mtime": 1784359746.7344515,
+    "ast_hash": "b93163466526a0c6737754df5e24e70d",
+    "semantic_hash": ""
+  },
+  "frontend/src/features/assessment/StudentExamListPage.tsx": {
+    "mtime": 1784359662.3216946,
+    "ast_hash": "1a9a69856f8b69baa3e4ae7c66163b5a",
+    "semantic_hash": ""
+  },
+  "frontend/src/features/assessment/TakeExamPage.tsx": {
+    "mtime": 1784361715.0058525,
+    "ast_hash": "d14a6776a13f437b7c61b965fff7fe3d",
+    "semantic_hash": ""
+  },
+  "frontend/src/features/assessment/index.ts": {
+    "mtime": 1784359761.8720891,
+    "ast_hash": "2d5c916548dd2b908b04d2f3c793e74f",
+    "semantic_hash": ""
+  },
+  "backend/db/migrations/V021__question_options.sql": {
+    "mtime": 1784361494.6022263,
+    "ast_hash": "12897d8630e874e65d6db0ee079d886c",
+    "semantic_hash": ""
+  },
+  "ai-service/app/services/exam_parser/clo_matcher_llm.py": {
+    "mtime": 1784362458.688008,
+    "ast_hash": "0420ce69a411a6b869b085411d47bb58",
+    "semantic_hash": ""
+  },
+  "backend/db/migrations/V022__exam_clo_llm_verified.sql": {
+    "mtime": 1784362111.8320043,
+    "ast_hash": "534df06ba057e139ca44d781272e4147",
+    "semantic_hash": ""
+  },
+  "ai-service/app/db/postgres_gap.py": {
+    "mtime": 1784376562.851671,
+    "ast_hash": "c7752857beba90f353363e04ce45e1f7",
+    "semantic_hash": ""
+  },
+  "ai-service/app/services/gap_analysis/__init__.py": {
+    "mtime": 1784376588.3321226,
+    "ast_hash": "d41d8cd98f00b204e9800998ecf8427e",
+    "semantic_hash": ""
+  },
+  "ai-service/app/services/gap_analysis/llm.py": {
+    "mtime": 1784376607.584284,
+    "ast_hash": "c2b51b7d406ed0be16bc574e1415034a",
+    "semantic_hash": ""
+  },
+  "ai-service/app/services/gap_analysis/service.py": {
+    "mtime": 1784376643.4134614,
+    "ast_hash": "7683c2a5683d8c919fdcd44f5068f185",
+    "semantic_hash": ""
+  },
+  "backend/db/migrations/V023__gap_analysis.sql": {
+    "mtime": 1784376439.316756,
+    "ast_hash": "30a10fa4ab6fb9adb9d884e582de93bb",
+    "semantic_hash": ""
+  },
+  "backend/internal/assessment/dto/exam_insight.go": {
+    "mtime": 1784376724.5889122,
+    "ast_hash": "7c0dfa9fde11822e648dbccbba321cab",
+    "semantic_hash": ""
+  },
+  "backend/internal/assessment/handler/exam_insight.go": {
+    "mtime": 1784376765.2920985,
+    "ast_hash": "c627bb33dc6c1756329b168b9d82f46e",
+    "semantic_hash": ""
+  },
+  "backend/internal/assessment/repository/exam_insight.go": {
+    "mtime": 1784376747.3029306,
+    "ast_hash": "74b832435a707aacba088ef9be53482d",
+    "semantic_hash": ""
+  },
+  "backend/internal/assessment/service/exam_insight.go": {
+    "mtime": 1784376756.2306325,
+    "ast_hash": "22d603a52a99a13aa23899a402fd1eb8",
+    "semantic_hash": ""
+  },
   "graphify-out/converted/Untitled document_d184c67f.md": {
     "mtime": 1784311127.645858,
     "ast_hash": "a7f393e77e3bd0e2f79e33e24b1f1f25",
-    "semantic_hash": "a7f393e77e3bd0e2f79e33e24b1f1f25"
+    "semantic_hash": ""
   },
   "graphify-out/converted/edugraph-architecture_0496a36f.md": {
     "mtime": 1784311127.8042223,
     "ast_hash": "f434f9eb6e4dc91891d78deb5cbf8f63",
-    "semantic_hash": "f434f9eb6e4dc91891d78deb5cbf8f63"
+    "semantic_hash": ""
   },
   "graphify-out/converted/edugraph-db-design_6564a0e9.md": {
     "mtime": 1784311128.128376,
     "ast_hash": "f11a437c2db89c4b52f68bd75c15f200",
-    "semantic_hash": "f11a437c2db89c4b52f68bd75c15f200"
+    "semantic_hash": ""
   },
   "graphify-out/converted/edugraph-impl-plan_89427a8d.md": {
     "mtime": 1784311128.3092175,
     "ast_hash": "67355c77cf5ecbd0f8cd4d7f820227a1",
-    "semantic_hash": "67355c77cf5ecbd0f8cd4d7f820227a1"
+    "semantic_hash": ""
   }
 }

@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strings"
 	"time"
 )
 
@@ -16,8 +17,15 @@ type Client struct {
 	http    *http.Client
 }
 
+// NewClient accepts "host:port" or a full URL (AI_SERVICE_URL defaults to
+// "ai-service:8000", scheme-less). Timeout covers the tutor's synchronous
+// Gemini round-trip (the ai-service caps its own model call at 30s), not
+// just the fast local inference endpoints.
 func NewClient(baseURL string) *Client {
-	return &Client{baseURL: baseURL, http: &http.Client{Timeout: 15 * time.Second}}
+	if !strings.Contains(baseURL, "://") {
+		baseURL = "http://" + baseURL
+	}
+	return &Client{baseURL: strings.TrimSuffix(baseURL, "/"), http: &http.Client{Timeout: 60 * time.Second}}
 }
 
 type CareerMatchRequest struct {
@@ -28,6 +36,31 @@ type CareerMatchRequest struct {
 type CareerMatchResult struct {
 	CareerPathID string  `json:"career_path_id"`
 	Score        float64 `json:"score"`
+}
+
+type TutorAskRequest struct {
+	StudentID string `json:"studentId"`
+	Question  string `json:"question"`
+	Language  string `json:"language"`
+}
+
+// TutorAskResponse mirrors the ai-service tutor's JSON (Capability 3C):
+// the Gemini answer plus which curriculum topics and personal gap records
+// were injected as context.
+type TutorAskResponse struct {
+	Answer        string          `json:"answer"`
+	RelatedTopics json.RawMessage `json:"relatedTopics"`
+	UsedGaps      json.RawMessage `json:"usedGaps"`
+	Model         string          `json:"model"`
+}
+
+// TutorAsk calls POST /api/v1/tutor/ask on the ai-service.
+func (c *Client) TutorAsk(ctx context.Context, req TutorAskRequest) (*TutorAskResponse, error) {
+	var out TutorAskResponse
+	if err := c.post(ctx, "/api/v1/tutor/ask", req, &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
 }
 
 // MatchCareers calls POST /api/v1/career/match on the ai-service.

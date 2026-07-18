@@ -13,6 +13,7 @@ import (
 	assessmenthandler "github.com/edugraph-ai/edugraph/internal/assessment/handler"
 	assessmentrepo "github.com/edugraph-ai/edugraph/internal/assessment/repository"
 	assessmentsvc "github.com/edugraph-ai/edugraph/internal/assessment/service"
+	"github.com/edugraph-ai/edugraph/internal/assessment/syncworker"
 
 	authhandler "github.com/edugraph-ai/edugraph/internal/auth/handler"
 	authrepo "github.com/edugraph-ai/edugraph/internal/auth/repository"
@@ -165,8 +166,17 @@ func main() {
 	// ... pass curriculumHandler to router ...
 
 	assessmentRepository := assessmentrepo.New(pgPool, neo4jDriver)
-	assessmentService := assessmentsvc.New(assessmentRepository)
+	assessmentService := assessmentsvc.New(assessmentRepository, storageProvider, redisClient, aiClient)
 	assessmentHandler := assessmenthandler.New(assessmentService)
+
+	// Capability 2C: mirrors graded exam attempts/answers into Neo4j.
+	// Runs as a background goroutine for the life of the process, same
+	// "one process, no separate deployable" shape as ai-service's Python
+	// workers -- see internal/assessment/syncworker/worker.go's doc comment
+	// for why this is a poller rather than curriculum's inline mirror.
+	syncWorkerCtx, cancelSyncWorker := context.WithCancel(context.Background())
+	defer cancelSyncWorker()
+	go syncworker.Run(syncWorkerCtx, assessmentRepository, 10*time.Second, log)
 
 	careerRepository := careerrepo.New(pgPool, neo4jDriver)
 	careerService := careersvc.New(careerRepository, aiClient)
