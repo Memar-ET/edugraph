@@ -5,9 +5,10 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/edugraph-ai/edugraph/internal/assessment/dto"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+
+	"github.com/edugraph-ai/edugraph/internal/assessment/dto"
 )
 
 // FetchInsightForStudentExam reads the Capability 3A Exam Insight layer

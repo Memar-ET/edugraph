@@ -183,7 +183,7 @@ func EnsureDevKeyPair(privPath, pubPath string) error {
 		return fmt.Errorf("marshal dev public key: %w", err)
 	}
 	pubPEM := pem.EncodeToMemory(&pem.Block{Type: "PUBLIC KEY", Bytes: pubBytes})
-	if err := os.WriteFile(pubPath, pubPEM, 0o644); err != nil {
+	if err := os.WriteFile(pubPath, pubPEM, 0o600); err != nil {
 		return fmt.Errorf("write dev public key: %w", err)
 	}
 

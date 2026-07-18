@@ -1,42 +1,59 @@
+version: "2"
+run:
+  tests: true
 linters:
   enable:
-    - errcheck
-    - gosimple
-    - govet
-    - ineffassign
-    - staticcheck
-    - unused
-    - gosec
+    - bodyclose
     - gocritic
+    - gosec
+    - misspell
+    - noctx
+    - revive
+    - sqlclosecheck
+    - testifylint
+  disable:
+    - exhaustruct
+  settings:
+    gosec:
+      excludes:
+        - G115
+    revive:
+      rules:
+        - name: exported
+          severity: warning
+  exclusions:
+    generated: lax
+    presets:
+      - comments
+      - common-false-positives
+      - legacy
+      - std-error-handling
+    rules:
+      - linters:
+          - errcheck
+          - gosec
+        path: _test\.go
+      # cmd entrypoints legitimately log.Fatal/os.Exit after defers --
+      # process teardown handles the cleanup those defers would do.
+      - linters:
+          - gocritic
+        path: cmd/
+        text: exitAfterDefer
+    paths:
+      - third_party$
+      - builtin$
+      - examples$
+formatters:
+  enable:
     - gofmt
     - goimports
-    - misspell
-    - revive
-    - testifylint
-    - noctx
-    - bodyclose
-    - sqlclosecheck
-  disable:
-    - exhaustruct   # too noisy for large structs
-
-linters-settings:
-  gosec:
-    excludes:
-      - G115   # allow integer conversions
-  revive:
-    rules:
-      - name: exported
-        severity: warning
-  goimports:
-    local-prefixes: github.com/edugraph-ai/edugraph
-
-run:
-  timeout: 5m
-  tests: true
-
-issues:
-  exclude-rules:
-    - path: _test\.go
-      linters: [gosec, errcheck]
-    - path: cmd/
-      linters: [gochecknomains]
+  settings:
+    goimports:
+      local-prefixes:
+        - github.com/edugraph-ai/edugraph
+  exclusions:
+    generated: lax
+    paths:
+      - third_party$
+      - builtin$
+      - examples$

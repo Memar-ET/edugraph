@@ -4,11 +4,12 @@ import (
 	"context"
 	"errors"
 
+	"github.com/google/uuid"
+
 	"github.com/edugraph-ai/edugraph/internal/assessment/dto"
 	"github.com/edugraph-ai/edugraph/internal/assessment/repository"
 	"github.com/edugraph-ai/edugraph/pkg/ai"
 	apperrors "github.com/edugraph-ai/edugraph/pkg/errors"
-	"github.com/google/uuid"
 )
 
 // AskTutor proxies a student's question to the ai-service Graph-RAG

@@ -15,8 +15,8 @@ type ValidationReport struct {
 	CLOCoverage            CLOCoverageReport            `json:"cloCoverage"`
 	BloomBalance           BloomBalanceReport           `json:"bloomBalance"`
 	DifficultyDistribution DifficultyDistributionReport `json:"difficultyDistribution"`
-	TopicCoverage          []TopicCoverageEntry          `json:"topicCoverage"`
-	PrerequisiteWarnings   []PrerequisiteWarningEntry    `json:"prerequisiteWarnings"`
+	TopicCoverage          []TopicCoverageEntry         `json:"topicCoverage"`
+	PrerequisiteWarnings   []PrerequisiteWarningEntry   `json:"prerequisiteWarnings"`
 }
 
 type CLOCoverageReport struct {

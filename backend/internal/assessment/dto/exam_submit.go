@@ -3,10 +3,13 @@ package dto
 import "github.com/google/uuid"
 
 // AnswerInput: Response is the selected option letter for mcq, or free
-// text for everything else.
+// text for everything else. TimeSpentSecs is optional client-reported
+// per-question time -- it feeds 4B's time-anomaly detection and is never
+// used for grading.
 type AnswerInput struct {
-	QuestionID uuid.UUID `json:"questionId" validate:"required"`
-	Response   string    `json:"response"`
+	QuestionID    uuid.UUID `json:"questionId" validate:"required"`
+	Response      string    `json:"response"`
+	TimeSpentSecs *int      `json:"timeSpentSecs" validate:"omitempty,gte=0"`
 }
 
 type SubmitExamRequest struct {

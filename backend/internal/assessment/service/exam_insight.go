@@ -4,10 +4,11 @@ import (
 	"context"
 	"errors"
 
+	"github.com/google/uuid"
+
 	"github.com/edugraph-ai/edugraph/internal/assessment/dto"
 	"github.com/edugraph-ai/edugraph/internal/assessment/repository"
 	apperrors "github.com/edugraph-ai/edugraph/pkg/errors"
-	"github.com/google/uuid"
 )
 
 // GetMyExamInsight returns the Capability 3A insight (narrative summary +

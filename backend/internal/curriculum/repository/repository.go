@@ -5,12 +5,13 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/edugraph-ai/edugraph/internal/curriculum/dto"
-	apperrors "github.com/edugraph-ai/edugraph/pkg/errors"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	neo4jdriver "github.com/neo4j/neo4j-go-driver/v5/neo4j"
+
+	"github.com/edugraph-ai/edugraph/internal/curriculum/dto"
+	apperrors "github.com/edugraph-ai/edugraph/pkg/errors"
 )
 
 type Repository struct {
@@ -172,7 +173,7 @@ func (r *Repository) ApproveAndPromote(
 	if err != nil {
 		return nil, fmt.Errorf("begin tx: %w", err)
 	}
-	defer tx.Rollback(ctx) // no-op once committed
+	defer func() { _ = tx.Rollback(ctx) }() // no-op once committed
 
 	// Lock the row and re-check status inside the transaction -- this is
 	// the authoritative check (avoids a race between two concurrent

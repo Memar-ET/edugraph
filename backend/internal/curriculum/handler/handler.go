@@ -7,14 +7,15 @@ import (
 	"net/http"
 	"strconv"
 
+	"github.com/go-chi/chi/v5"
+	"github.com/google/uuid"
+
 	"github.com/edugraph-ai/edugraph/internal/curriculum/dto"
 	"github.com/edugraph-ai/edugraph/internal/curriculum/service"
 	apperrors "github.com/edugraph-ai/edugraph/pkg/errors"
 	"github.com/edugraph-ai/edugraph/pkg/fileformat"
 	"github.com/edugraph-ai/edugraph/pkg/middleware"
 	"github.com/edugraph-ai/edugraph/pkg/validator"
-	"github.com/go-chi/chi/v5"
-	"github.com/google/uuid"
 )
 
 // maxUploadBytes bounds the in-memory portion of the multipart parse.

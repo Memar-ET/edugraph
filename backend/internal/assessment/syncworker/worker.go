@@ -14,8 +14,9 @@ import (
 	"context"
 	"time"
 
-	"github.com/edugraph-ai/edugraph/internal/assessment/repository"
 	"go.uber.org/zap"
+
+	"github.com/edugraph-ai/edugraph/internal/assessment/repository"
 )
 
 const batchSize = 50
@@ -71,7 +72,26 @@ func syncOnce(ctx context.Context, repo *repository.Repository, log *zap.Logger)
 		}
 	}
 
-	if len(attempts) > 0 || len(answers) > 0 {
-		log.Info("sync_worker.tick", zap.Int("attemptsSynced", len(attempts)), zap.Int("answersSynced", len(answers)))
+	// Capability 4A: mirror gap records as School-ENROLLS->Student
+	// -STRUGGLED_WITH->Topic so the class heatmap can aggregate them.
+	gaps, err := repo.FetchUnsyncedGapRecords(ctx, batchSize)
+	if err != nil {
+		log.Error("sync_worker.fetch_gaps_failed", zap.Error(err))
+	}
+	for _, g := range gaps {
+		if err := repo.SyncGapToNeo4j(ctx, g); err != nil {
+			log.Error("sync_worker.sync_gap_failed", zap.String("gapId", g.ID.String()), zap.Error(err))
+			continue
+		}
+		if err := repo.MarkGapSynced(ctx, g.ID); err != nil {
+			log.Error("sync_worker.mark_gap_synced_failed", zap.String("gapId", g.ID.String()), zap.Error(err))
+		}
+	}
+
+	if len(attempts) > 0 || len(answers) > 0 || len(gaps) > 0 {
+		log.Info("sync_worker.tick",
+			zap.Int("attemptsSynced", len(attempts)),
+			zap.Int("answersSynced", len(answers)),
+			zap.Int("gapsSynced", len(gaps)))
 	}
 }

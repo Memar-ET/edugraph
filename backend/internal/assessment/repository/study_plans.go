@@ -4,8 +4,9 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/edugraph-ai/edugraph/internal/assessment/dto"
 	"github.com/google/uuid"
+
+	"github.com/edugraph-ai/edugraph/internal/assessment/dto"
 )
 
 // FetchActiveStudyPlans returns the student's active plans, newest first

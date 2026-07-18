@@ -9,13 +9,14 @@ import (
 	"mime"
 	"path/filepath"
 
+	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
+	"github.com/redis/go-redis/v9" // Assuming go-redis is used
+
 	"github.com/edugraph-ai/edugraph/internal/curriculum/dto"
 	"github.com/edugraph-ai/edugraph/internal/curriculum/repository"
 	apperrors "github.com/edugraph-ai/edugraph/pkg/errors"
 	"github.com/edugraph-ai/edugraph/pkg/storage"
-	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5"
-	"github.com/redis/go-redis/v9" // Assuming go-redis is used
 )
 
 type Service struct {

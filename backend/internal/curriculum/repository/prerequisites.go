@@ -5,10 +5,11 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/edugraph-ai/edugraph/internal/curriculum/dto"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	neo4jdriver "github.com/neo4j/neo4j-go-driver/v5/neo4j"
+
+	"github.com/edugraph-ai/edugraph/internal/curriculum/dto"
 )
 
 var (
@@ -52,7 +53,7 @@ func (r *Repository) AddTopicPrerequisite(
 	if err != nil {
 		return nil, fmt.Errorf("begin add prerequisite tx: %w", err)
 	}
-	defer tx.Rollback(ctx)
+	defer func() { _ = tx.Rollback(ctx) }()
 
 	topic, err := r.fetchTopicCore(ctx, tx, topicID)
 	if err != nil {

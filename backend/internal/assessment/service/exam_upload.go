@@ -6,11 +6,12 @@ import (
 	"fmt"
 	"io"
 
+	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
+
 	"github.com/edugraph-ai/edugraph/internal/assessment/dto"
 	"github.com/edugraph-ai/edugraph/internal/assessment/repository"
 	apperrors "github.com/edugraph-ai/edugraph/pkg/errors"
-	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5"
 )
 
 // UploadExam mirrors curriculum's Upload workflow: derive grade/scope/

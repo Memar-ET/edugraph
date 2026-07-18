@@ -98,6 +98,8 @@ func newRouter(cfg config.Config, log *zap.Logger, verifier middleware.TokenVeri
 				r.With(middleware.RequireRole(roleMinistryAdmin, roleRegionalAdmin)).Post("/", h.school.Create)
 				r.With(middleware.RequireRole(roleRegionalAdmin, roleSchoolAdmin)).Patch("/{id}", h.school.Update)
 				r.With(middleware.RequireRole(roleMinistryAdmin, roleRegionalAdmin)).Delete("/{id}", h.school.Delete)
+				// Capability 4C: composite quality scores per subject+grade.
+				r.With(middleware.RequireRole(roleSchoolAdmin, roleRegionalAdmin, roleMinistryAdmin)).Get("/{id}/quality-scores", h.assessment.GetSchoolQualityScores)
 			})
 
 			// ── Students ──────────────────────────────────────
@@ -123,6 +125,10 @@ func newRouter(cfg config.Config, log *zap.Logger, verifier middleware.TokenVeri
 
 			// ── Teachers ──────────────────────────────────────
 			r.Route("/teachers", func(r chi.Router) {
+				// Capability 4A: class-wide gap heatmap + cross-grade
+				// root-cause alerts, scoped to the caller's school.
+				// Static "me" takes precedence over {id} in chi.
+				r.With(middleware.RequireRole(roleTeacher, roleSchoolAdmin)).Get("/me/class-heatmap", h.assessment.GetClassHeatmap)
 				r.Get("/", h.teacher.List)
 				r.Get("/{id}", h.teacher.Get)
 				r.With(middleware.RequireRole(roleSchoolAdmin)).Post("/", h.teacher.Create)
@@ -165,6 +171,9 @@ func newRouter(cfg config.Config, log *zap.Logger, verifier middleware.TokenVeri
 				// asynchronously by the ai-service gap worker).
 				r.With(middleware.RequireRole(roleStudent)).Get("/{id}/my-insight", h.assessment.GetMyExamInsight)
 				r.With(middleware.RequireRole(roleTeacher, roleSchoolAdmin)).Get("/{id}/insights", h.assessment.ListExamInsights)
+				// Capability 4B: retroactive exam quality report
+				// (discrimination, calibration, time anomalies, CLO coverage).
+				r.With(middleware.RequireRole(roleTeacher, roleSchoolAdmin)).Get("/{id}/quality", h.assessment.GetExamQuality)
 			})
 
 			// ── AI Tutor (Capability 3C: Graph-RAG + Gemini) ──

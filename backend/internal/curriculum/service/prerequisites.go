@@ -4,10 +4,11 @@ import (
 	"context"
 	"errors"
 
+	"github.com/google/uuid"
+
 	"github.com/edugraph-ai/edugraph/internal/curriculum/dto"
 	"github.com/edugraph-ai/edugraph/internal/curriculum/repository"
 	apperrors "github.com/edugraph-ai/edugraph/pkg/errors"
-	"github.com/google/uuid"
 )
 
 // AddTopicPrerequisite validates and records a "topic requires

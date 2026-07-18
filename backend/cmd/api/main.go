@@ -11,6 +11,7 @@ import (
 	storagepkg "github.com/edugraph-ai/edugraph/pkg/storage"
 
 	assessmenthandler "github.com/edugraph-ai/edugraph/internal/assessment/handler"
+	"github.com/edugraph-ai/edugraph/internal/assessment/qualityworker"
 	assessmentrepo "github.com/edugraph-ai/edugraph/internal/assessment/repository"
 	assessmentsvc "github.com/edugraph-ai/edugraph/internal/assessment/service"
 	"github.com/edugraph-ai/edugraph/internal/assessment/syncworker"
@@ -177,6 +178,10 @@ func main() {
 	syncWorkerCtx, cancelSyncWorker := context.WithCancel(context.Background())
 	defer cancelSyncWorker()
 	go syncworker.Run(syncWorkerCtx, assessmentRepository, 10*time.Second, log)
+
+	// Capability 4C: nightly school quality recompute (the impl plan's
+	// "nightly Celery batch job" -- Go ticker here, no Celery by design).
+	go qualityworker.Run(syncWorkerCtx, assessmentService, 24*time.Hour, log)
 
 	careerRepository := careerrepo.New(pgPool, neo4jDriver)
 	careerService := careersvc.New(careerRepository, aiClient)

@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	neo4jdriver "github.com/neo4j/neo4j-go-driver/v5/neo4j"
+	neo4jconfig "github.com/neo4j/neo4j-go-driver/v5/neo4j/config"
 
 	"github.com/edugraph-ai/edugraph/pkg/config"
 )
@@ -14,7 +15,7 @@ func NewDriver(cfg config.Neo4jConfig) (neo4jdriver.DriverWithContext, error) {
 	driver, err := neo4jdriver.NewDriverWithContext(
 		cfg.URI,
 		neo4jdriver.BasicAuth(cfg.User, cfg.Password, ""),
-		func(c *neo4jdriver.Config) {
+		func(c *neo4jconfig.Config) {
 			if cfg.MaxConnPoolSize > 0 {
 				c.MaxConnectionPoolSize = cfg.MaxConnPoolSize
 			}

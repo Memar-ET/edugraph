@@ -6,9 +6,10 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/edugraph-ai/edugraph/internal/assessment/dto"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+
+	"github.com/edugraph-ai/edugraph/internal/assessment/dto"
 )
 
 type StudentProfile struct {
@@ -123,6 +124,7 @@ type GradedAnswer struct {
 	MarksAwarded  *float64 // nil = needs_grading
 	MarksPossible int
 	Passed        *bool
+	TimeSpentSecs *int // client-reported, nil when the client didn't time it
 }
 
 // SaveStudentAnswers upserts one attempt's answers in a single
@@ -135,21 +137,24 @@ func (r *Repository) SaveStudentAnswers(ctx context.Context, attemptID, studentI
 	if err != nil {
 		return fmt.Errorf("begin save answers tx: %w", err)
 	}
-	defer tx.Rollback(ctx)
+	defer func() { _ = tx.Rollback(ctx) }()
 
 	const q = `
 		INSERT INTO assessment.student_answers
-			(attempt_id, student_id, question_id, school_id, answer_text, marks_awarded, marks_possible, passed)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+			(attempt_id, student_id, question_id, school_id, answer_text, marks_awarded, marks_possible, passed, time_spent_secs)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
 		ON CONFLICT (attempt_id, question_id) DO UPDATE SET
 			answer_text = EXCLUDED.answer_text,
 			marks_awarded = EXCLUDED.marks_awarded,
 			marks_possible = EXCLUDED.marks_possible,
 			passed = EXCLUDED.passed,
+			-- a later write without timing (e.g. a teacher bulk-grade of
+			-- the same answer) must not erase the student's reported time
+			time_spent_secs = COALESCE(EXCLUDED.time_spent_secs, assessment.student_answers.time_spent_secs),
 			updated_at = now()
 	`
 	for _, a := range answers {
-		if _, err := tx.Exec(ctx, q, attemptID, studentID, a.QuestionID, schoolID, a.AnswerText, a.MarksAwarded, a.MarksPossible, a.Passed); err != nil {
+		if _, err := tx.Exec(ctx, q, attemptID, studentID, a.QuestionID, schoolID, a.AnswerText, a.MarksAwarded, a.MarksPossible, a.Passed, a.TimeSpentSecs); err != nil {
 			return fmt.Errorf("save answer for question %s: %w", a.QuestionID, err)
 		}
 	}

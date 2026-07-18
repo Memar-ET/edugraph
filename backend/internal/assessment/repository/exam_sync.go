@@ -60,7 +60,7 @@ type UnsyncedAnswer struct {
 // and RecomputeAttemptTotals leaves it ungraded no longer.
 func (r *Repository) FetchUnsyncedAnswers(ctx context.Context, limit int) ([]UnsyncedAnswer, error) {
 	const q = `
-		SELECT id, student_id, question_id, marks_awarded, passed
+		SELECT id, student_id, question_id, marks_awarded, COALESCE(passed, false)
 		FROM assessment.student_answers
 		WHERE NOT neo4j_written AND marks_awarded IS NOT NULL
 		LIMIT $1

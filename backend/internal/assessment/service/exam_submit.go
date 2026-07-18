@@ -7,10 +7,11 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/google/uuid"
+
 	"github.com/edugraph-ai/edugraph/internal/assessment/dto"
 	"github.com/edugraph-ai/edugraph/internal/assessment/repository"
 	apperrors "github.com/edugraph-ai/edugraph/pkg/errors"
-	"github.com/google/uuid"
 )
 
 // verifyStudentAccess is shared by everything a student does with an exam
@@ -124,6 +125,7 @@ func (s *Service) SubmitExam(ctx context.Context, userID, examID uuid.UUID, req 
 			return nil, apperrors.BadRequest(fmt.Sprintf("question %s is not part of this exam", a.QuestionID))
 		}
 		ga := gradeMCQOrPend(q, a.Response)
+		ga.TimeSpentSecs = a.TimeSpentSecs
 		answers = append(answers, ga)
 		if ga.MarksAwarded != nil {
 			graded++

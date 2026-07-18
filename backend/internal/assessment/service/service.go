@@ -1,10 +1,11 @@
 package service
 
 import (
+	"github.com/redis/go-redis/v9"
+
 	"github.com/edugraph-ai/edugraph/internal/assessment/repository"
 	"github.com/edugraph-ai/edugraph/pkg/ai"
 	"github.com/edugraph-ai/edugraph/pkg/storage"
-	"github.com/redis/go-redis/v9"
 )
 
 // Service is shared across every service method in this package

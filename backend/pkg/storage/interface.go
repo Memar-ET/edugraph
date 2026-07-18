@@ -8,7 +8,7 @@ import (
 // StorageProvider abstracts file storage.
 // In Dev: Uses Postgres (BYTEA).
 // In Prod: Uses AWS S3.
-type StorageProvider interface {
+type StorageProvider interface { //nolint:revive // established public API name used across the codebase and docs
 	// Upload saves the file and returns a reference ID (UUID for Postgres, S3 Key for AWS).
 	Upload(ctx context.Context, fileName string, mimeType string, file io.Reader) (string, error)
 

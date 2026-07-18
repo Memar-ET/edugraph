@@ -5,8 +5,9 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/edugraph-ai/edugraph/internal/assessment/dto"
 	"github.com/google/uuid"
+
+	"github.com/edugraph-ai/edugraph/internal/assessment/dto"
 )
 
 // FetchQuestionsForStudent is the student-facing counterpart of

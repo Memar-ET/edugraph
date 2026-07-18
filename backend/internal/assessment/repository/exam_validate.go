@@ -173,7 +173,7 @@ type PrerequisiteWarning struct {
 	PrerequisiteID    uuid.UUID
 	PrerequisiteTitle string
 	PrerequisiteGrade int
-	IsCrossGrade       bool
+	IsCrossGrade      bool
 }
 
 // FetchPrerequisiteWarnings looks up prerequisites of the topics a set of
