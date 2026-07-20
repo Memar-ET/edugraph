@@ -7,7 +7,7 @@ import { apiErrorMessage } from '@lib/api/client'
 import { uploadExam } from '@lib/api/endpoints'
 import { uploadExamSchema, type UploadExamFormValues } from '@lib/validations/exam'
 import { Banner, Button, Card, CardContent, CardHeader, CardTitle, Input, Label } from '@components/ui'
-import { AppHeader } from '@components/layout/AppHeader'
+import { AppShell } from '@components/layout'
 
 export function ExamUploadPage() {
   const navigate = useNavigate()
@@ -41,9 +41,8 @@ export function ExamUploadPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <AppHeader />
-      <main className="mx-auto max-w-xl px-4 py-8">
+    <AppShell title="Upload exam" description="Step 1 of the exam pipeline.">
+      <div className="mx-auto max-w-xl">
         <Card>
           <CardHeader>
             <CardTitle>Upload exam</CardTitle>
@@ -103,7 +102,7 @@ export function ExamUploadPage() {
             </form>
           </CardContent>
         </Card>
-      </main>
-    </div>
+      </div>
+    </AppShell>
   )
 }

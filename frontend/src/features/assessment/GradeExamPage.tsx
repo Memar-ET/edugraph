@@ -6,7 +6,7 @@ import { apiErrorMessage } from '@lib/api/client'
 import { bulkGradeExam, getExam, listQuestionsForGrading, listStudents } from '@lib/api/endpoints'
 import { queryKeys } from '@lib/query/keys'
 import { Banner, Button, Card, CardContent, CardHeader, CardTitle, Spinner } from '@components/ui'
-import { AppHeader } from '@components/layout/AppHeader'
+import { AppShell } from '@components/layout'
 import { useAuthStore } from '@stores/auth.store'
 import type { BulkGradeResponse, GradeEntry } from '@/types/api'
 
@@ -74,9 +74,8 @@ export function GradeExamPage() {
   const loading = loadingQuestions || loadingStudents
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <AppHeader />
-      <main className="mx-auto max-w-6xl px-4 py-8 space-y-4">
+    <AppShell title="Grade exam" description="Flow 2: paper/teacher-encoded grading spreadsheet.">
+      <div className="mx-auto max-w-6xl space-y-4">
         <Button
           variant="ghost"
           size="sm"
@@ -167,7 +166,7 @@ export function GradeExamPage() {
             </Button>
           </div>
         )}
-      </main>
-    </div>
+      </div>
+    </AppShell>
   )
 }

@@ -3,10 +3,10 @@ import type { HTMLAttributes } from 'react'
 import { cn } from '@lib/utils/cn'
 
 const toneStyles = {
-  error: 'bg-red-50 text-red-800 border-red-200',
-  success: 'bg-green-50 text-green-800 border-green-200',
-  info: 'bg-blue-50 text-blue-800 border-blue-200',
-  warning: 'bg-amber-50 text-amber-800 border-amber-200',
+  error: 'bg-alert-50 text-alert-800 border-alert-200',
+  success: 'bg-health-50 text-health-800 border-health-200',
+  info: 'bg-primary-50 text-primary-800 border-primary-200',
+  warning: 'bg-seal-50 text-seal-800 border-seal-200',
 } as const
 
 export interface BannerProps extends HTMLAttributes<HTMLDivElement> {

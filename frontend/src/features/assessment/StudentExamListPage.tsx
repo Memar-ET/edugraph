@@ -2,7 +2,7 @@ import { useNavigate } from '@tanstack/react-router'
 import { useState } from 'react'
 
 import { Banner, Button, Card, CardContent, CardHeader, CardTitle, Input, Label } from '@components/ui'
-import { AppHeader } from '@components/layout/AppHeader'
+import { AppShell } from '@components/layout'
 
 // There's no "list published exams for my grade" endpoint yet -- a
 // teacher shares the exam link (shown on ExamReviewPage once published)
@@ -25,9 +25,8 @@ export function StudentExamListPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <AppHeader />
-      <main className="mx-auto max-w-md px-4 py-8">
+    <AppShell title="Take an exam">
+      <div className="mx-auto max-w-md">
         <Card>
           <CardHeader>
             <CardTitle>Take an exam</CardTitle>
@@ -51,7 +50,7 @@ export function StudentExamListPage() {
             </Button>
           </CardContent>
         </Card>
-      </main>
-    </div>
+      </div>
+    </AppShell>
   )
 }

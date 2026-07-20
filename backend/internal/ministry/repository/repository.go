@@ -55,10 +55,10 @@ func (r *Repository) RegionStats(ctx context.Context, regionID string) (RegionSt
 		(SELECT count(*) FROM students st JOIN schools sc ON sc.id = st.school_id WHERE sc.region_id = $1),
 		(SELECT count(*) FROM teachers t JOIN schools sc ON sc.id = t.school_id WHERE sc.region_id = $1),
 		COALESCE((
-			SELECT avg(ar.score) FROM assessment_results ar
-			JOIN students st ON st.id = ar.student_id
+			SELECT avg(ea.percentage) FROM assessment.exam_attempts ea
+			JOIN students st ON st.id = ea.student_id
 			JOIN schools sc ON sc.id = st.school_id
-			WHERE sc.region_id = $1
+			WHERE sc.region_id = $1 AND ea.percentage IS NOT NULL
 		), 0)`
 
 	var s RegionStats

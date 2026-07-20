@@ -5,16 +5,37 @@ import type {
   AuthResponse,
   BulkGradeRequest,
   BulkGradeResponse,
+  CareerMatchResponse,
+  CareerPathResponse,
+  ClassHeatmapResponse,
+  CreateCareerPathRequest,
+  CreateNotificationRequest,
   Envelope,
+  ExamInsight,
+  ExamInsightListEntry,
+  ExamQualityResponse,
   ExamQuestion,
   ExamStatus,
+  GenerateStudyPlanRequest,
+  GenerateStudyPlanResponse,
   GradingQuestion,
   JobStatus,
   LoginRequest,
+  MinistryOverviewResponse,
+  NotificationResponse,
   PublishResponse,
+  RegionResponse,
+  RegionStatsResponse,
+  SchoolQualityResponse,
+  SchoolResponse,
   StudentResponse,
+  StudyPlan,
+  SubjectProfile,
   SubmitExamRequest,
   SubmitExamResponse,
+  TeacherResponse,
+  TutorAskRequest,
+  TutorAskResponse,
   UploadAnswerKeyResponse,
   UploadExamResponse,
   UploadResponse,
@@ -158,5 +179,146 @@ export async function listStudents(schoolId: string): Promise<StudentResponse[]>
   const res = await apiClient.get<Envelope<StudentResponse[]>>('/students', {
     params: { school_id: schoolId, limit: 100 },
   })
+  return unwrap(res.data)
+}
+
+// ── Subject health + study plans (Capabilities 3A/3B) ────────────
+
+export async function getMySubjectProfiles(): Promise<SubjectProfile[]> {
+  const res = await apiClient.get<Envelope<SubjectProfile[]>>('/students/me/subject-profiles')
+  return unwrap(res.data)
+}
+
+export async function generateStudyPlan(
+  payload: GenerateStudyPlanRequest = {},
+): Promise<GenerateStudyPlanResponse> {
+  const res = await apiClient.post<Envelope<GenerateStudyPlanResponse>>('/students/me/study-plans', payload)
+  return unwrap(res.data)
+}
+
+export async function listMyStudyPlans(): Promise<StudyPlan[]> {
+  const res = await apiClient.get<Envelope<StudyPlan[]>>('/students/me/study-plans')
+  return unwrap(res.data)
+}
+
+// ── Career (Capability: career matching) ──────────────────────────
+
+export async function getCareerMatches(studentId: string): Promise<CareerMatchResponse[]> {
+  const res = await apiClient.get<Envelope<CareerMatchResponse[]>>(
+    `/students/${studentId}/career/matches`,
+  )
+  return unwrap(res.data)
+}
+
+export async function generateCareerMatches(studentId: string): Promise<CareerMatchResponse[]> {
+  const res = await apiClient.post<Envelope<CareerMatchResponse[]>>(
+    `/students/${studentId}/career/generate`,
+  )
+  return unwrap(res.data)
+}
+
+export async function listCareerPaths(): Promise<CareerPathResponse[]> {
+  const res = await apiClient.get<Envelope<CareerPathResponse[]>>('/career/paths')
+  return unwrap(res.data)
+}
+
+export async function createCareerPath(payload: CreateCareerPathRequest): Promise<CareerPathResponse> {
+  const res = await apiClient.post<Envelope<CareerPathResponse>>('/career/paths', payload)
+  return unwrap(res.data)
+}
+
+// ── AI Tutor (Capability 3C) ──────────────────────────────────────
+
+export async function askTutor(payload: TutorAskRequest): Promise<TutorAskResponse> {
+  const res = await apiClient.post<Envelope<TutorAskResponse>>('/tutor/ask', payload)
+  return unwrap(res.data)
+}
+
+// ── Exam insights (Capability 3A gap layer) ───────────────────────
+
+export async function getMyExamInsight(examId: string): Promise<ExamInsight> {
+  const res = await apiClient.get<Envelope<ExamInsight>>(`/exams/${examId}/my-insight`)
+  return unwrap(res.data)
+}
+
+export async function listExamInsights(examId: string): Promise<ExamInsightListEntry[]> {
+  const res = await apiClient.get<Envelope<ExamInsightListEntry[]>>(`/exams/${examId}/insights`)
+  return unwrap(res.data)
+}
+
+// ── Exam quality (Capability 4B) ──────────────────────────────────
+
+export async function getExamQuality(examId: string): Promise<ExamQualityResponse> {
+  const res = await apiClient.get<Envelope<ExamQualityResponse>>(`/exams/${examId}/quality`)
+  return unwrap(res.data)
+}
+
+// ── Class heatmap (Capability 4A) ─────────────────────────────────
+
+export async function getClassHeatmap(subjectCode: string, gradeLevel: number): Promise<ClassHeatmapResponse> {
+  const res = await apiClient.get<Envelope<ClassHeatmapResponse>>('/teachers/me/class-heatmap', {
+    params: { subjectCode, gradeLevel },
+  })
+  return unwrap(res.data)
+}
+
+// ── School quality (Capability 4C) ────────────────────────────────
+
+export async function getSchoolQualityScores(schoolId: string): Promise<SchoolQualityResponse> {
+  const res = await apiClient.get<Envelope<SchoolQualityResponse>>(`/schools/${schoolId}/quality-scores`)
+  return unwrap(res.data)
+}
+
+// ── Ministry / regional oversight ─────────────────────────────────
+
+export async function getMinistryOverview(): Promise<MinistryOverviewResponse> {
+  const res = await apiClient.get<Envelope<MinistryOverviewResponse>>('/ministry/overview')
+  return unwrap(res.data)
+}
+
+export async function getRegionStats(regionId: string): Promise<RegionStatsResponse> {
+  const res = await apiClient.get<Envelope<RegionStatsResponse>>(`/ministry/regions/${regionId}/stats`)
+  return unwrap(res.data)
+}
+
+export async function listRegions(): Promise<RegionResponse[]> {
+  const res = await apiClient.get<Envelope<RegionResponse[]>>('/regions', { params: { limit: 100 } })
+  return unwrap(res.data)
+}
+
+export async function listSchools(regionId?: string): Promise<SchoolResponse[]> {
+  const res = await apiClient.get<Envelope<SchoolResponse[]>>('/schools', {
+    params: { region_id: regionId, limit: 100 },
+  })
+  return unwrap(res.data)
+}
+
+export async function getSchool(schoolId: string): Promise<SchoolResponse> {
+  const res = await apiClient.get<Envelope<SchoolResponse>>(`/schools/${schoolId}`)
+  return unwrap(res.data)
+}
+
+export async function listTeachers(schoolId: string): Promise<TeacherResponse[]> {
+  const res = await apiClient.get<Envelope<TeacherResponse[]>>('/teachers', {
+    params: { school_id: schoolId, limit: 100 },
+  })
+  return unwrap(res.data)
+}
+
+// ── Notifications ──────────────────────────────────────────────────
+
+export async function listNotifications(): Promise<NotificationResponse[]> {
+  const res = await apiClient.get<Envelope<NotificationResponse[]>>('/notifications', {
+    params: { limit: 50 },
+  })
+  return unwrap(res.data)
+}
+
+export async function markNotificationRead(id: string): Promise<void> {
+  await apiClient.patch(`/notifications/${id}/read`)
+}
+
+export async function createNotification(payload: CreateNotificationRequest): Promise<NotificationResponse> {
+  const res = await apiClient.post<Envelope<NotificationResponse>>('/notifications', payload)
   return unwrap(res.data)
 }

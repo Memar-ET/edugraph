@@ -9,7 +9,7 @@ import { getExam, publishExam, uploadAnswerKey, validateExam } from '@lib/api/en
 import { queryKeys } from '@lib/query/keys'
 import { uploadAnswerKeySchema, type UploadAnswerKeyFormValues } from '@lib/validations/exam'
 import { Banner, Button, Card, CardContent, CardHeader, CardTitle, Input, Spinner } from '@components/ui'
-import { AppHeader } from '@components/layout/AppHeader'
+import { AppShell } from '@components/layout'
 import type { ValidationReport } from '@/types/api'
 
 const IN_PROGRESS_STATUSES = new Set(['pending', 'parsing'])
@@ -76,9 +76,8 @@ export function ExamReviewPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <AppHeader />
-      <main className="mx-auto max-w-3xl px-4 py-8 space-y-4">
+    <AppShell title="Review exam" description="Steps 2/3: AI validation and publishing.">
+      <div className="mx-auto max-w-3xl space-y-4">
         <Button variant="ghost" size="sm" onClick={() => void navigate({ to: '/teacher/exams/upload' })}>
           ← Upload another exam
         </Button>
@@ -172,6 +171,12 @@ export function ExamReviewPage() {
                     >
                       Grade this exam
                     </Button>
+                    <Button
+                      variant="secondary"
+                      onClick={() => void navigate({ to: '/teacher/exams/$examId/quality', params: { examId } })}
+                    >
+                      View quality report
+                    </Button>
                   </div>
                   <p className="text-sm text-gray-500">
                     Student link: <code className="rounded bg-gray-100 px-1.5 py-0.5">/student/exams/{examId}</code>
@@ -181,8 +186,8 @@ export function ExamReviewPage() {
             )}
           </>
         )}
-      </main>
-    </div>
+      </div>
+    </AppShell>
   )
 }
 

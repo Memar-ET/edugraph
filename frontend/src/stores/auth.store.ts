@@ -49,10 +49,11 @@ export function canAccessStudentDashboard(role: string | undefined): boolean {
 
 // Single source of truth for "where does this role land after login" --
 // used by both LoginPage's post-login redirect and the router's
-// already-authenticated guards on / and /login.
+// already-authenticated guards on / and /login. Every role except
+// curriculum_officer lands on '/', which the index route's DashboardRouter
+// dispatches to a role-specific dashboard component -- curriculum_officer
+// has no dashboard endpoint yet, so it goes straight into the pipeline.
 export function landingPathFor(role: string | undefined): string {
-  if (canAccessCurriculumReview(role)) return '/curriculum/upload'
-  if (canAccessTeacherDashboard(role)) return '/teacher/exams/upload'
-  if (canAccessStudentDashboard(role)) return '/student/exams'
+  if (role === 'curriculum_officer') return '/curriculum/upload'
   return '/'
 }

@@ -9,5 +9,28 @@ body,
 }
 
 body {
-  @apply bg-gray-50 text-gray-900 antialiased;
+  @apply bg-gray-50 font-sans text-gray-900 antialiased;
+}
+
+h1,
+h2,
+h3 {
+  @apply font-display;
+}
+
+::selection {
+  @apply bg-seal-200 text-primary-900;
+}
+
+/* Respect reduced-motion for the whole app -- animations here are
+   micro-interactions (nav rule slide, seal stamp-in), never load-bearing. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }

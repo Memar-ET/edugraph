@@ -6,7 +6,7 @@ import { apiErrorMessage } from '@lib/api/client'
 import { approveCurriculumJob, fetchCurriculumFileBlobUrl, getCurriculumJob } from '@lib/api/endpoints'
 import { queryKeys } from '@lib/query/keys'
 import { Banner, Button, Card, CardContent, CardHeader, CardTitle, Input, Spinner } from '@components/ui'
-import { AppHeader } from '@components/layout/AppHeader'
+import { AppShell } from '@components/layout'
 import type { ApproveResponse, ParsedTopic, ParsedUnit } from '@/types/api'
 
 const IN_PROGRESS_STATUSES = new Set(['pending', 'parsing'])
@@ -143,9 +143,8 @@ export function JobReviewPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <AppHeader />
-      <main className="mx-auto max-w-3xl px-4 py-8 space-y-4">
+    <AppShell title="Review curriculum job" description="Step 3: review and approve the AI-extracted structure.">
+      <div className="mx-auto max-w-3xl space-y-4">
         <Button variant="ghost" size="sm" onClick={() => void navigate({ to: '/curriculum/upload' })}>
           ← Upload another document
         </Button>
@@ -311,8 +310,8 @@ export function JobReviewPage() {
               job.status !== 'failed' && <Banner tone="warning">No parsed structure available yet.</Banner>}
           </>
         )}
-      </main>
-    </div>
+      </div>
+    </AppShell>
   )
 }
 

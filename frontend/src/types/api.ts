@@ -10,6 +10,13 @@ export interface Envelope<T> {
   meta?: unknown
 }
 
+/** Pagination metadata attached by middleware.WriteJSONMeta (pkg/pagination.Meta). */
+export interface PaginationMeta {
+  page: number
+  limit: number
+  total: number
+}
+
 export type Role =
   | 'student'
   | 'teacher'
@@ -298,4 +305,290 @@ export interface BulkGradeRequest {
 export interface BulkGradeResponse {
   attemptsTouched: number
   answersSaved: number
+}
+
+// ── Exam insights (Capability 3A gap layer) ─────────────────────
+
+export interface GapRecordEntry {
+  questionId: string | null
+  symptomTopicId: string
+  symptomTopicTitle: string
+  cloCode?: string | null
+  rootCauseTopicId?: string | null
+  rootCauseTopicTitle?: string | null
+  rootCauseGrade?: number | null
+  severityScore: number
+  prerequisiteDepth: number
+  llmExplanation?: string | null
+}
+
+export interface ExamInsight {
+  attemptId: string
+  examId: string
+  totalScore?: number
+  percentage?: number
+  passed?: boolean
+  gapsFound: number
+  summary?: string
+  llmModel?: string
+  generatedAt: string
+  gaps: GapRecordEntry[]
+}
+
+export interface ExamInsightListEntry {
+  studentId: string
+  attemptId: string
+  totalScore?: number
+  percentage?: number
+  passed?: boolean
+  gapsFound: number
+  summary?: string
+  generatedAt: string
+}
+
+// ── Subject health (Capability 3A) ──────────────────────────────
+
+export interface SubjectProfile {
+  subjectCode: string
+  subjectName: string
+  gradeLevel: number
+  currentMasteryPct: number
+  /** Raw JSONB -- shape is generator-defined, render defensively. */
+  topWeakAreas: unknown
+  examsAnalyzed: number
+  lastUpdated: string
+}
+
+// ── Study plans (Capability 3B) ─────────────────────────────────
+
+export interface GenerateStudyPlanRequest {
+  targetExamId?: string
+  language?: 'en' | 'am'
+}
+
+export interface GenerateStudyPlanResponse {
+  status: string
+  message: string
+}
+
+export interface StudyPlanBlock {
+  topicId?: string
+  title?: string
+  hours?: number
+  why?: string
+  isRootCause?: boolean
+}
+
+export interface StudyPlanDay {
+  day: number | string
+  blocks: StudyPlanBlock[]
+}
+
+export interface StudyPlanData {
+  days: StudyPlanDay[]
+  summary?: string
+}
+
+export interface StudyPlan {
+  id: string
+  targetExamId?: string | null
+  planData: StudyPlanData
+  totalDays: number
+  totalHours: number
+  language: string
+  generatedAt: string
+  expiresAt?: string | null
+}
+
+// ── AI Tutor (Capability 3C) ─────────────────────────────────────
+
+export interface TutorAskRequest {
+  question: string
+  language?: 'en' | 'am'
+}
+
+export interface TutorAskResponse {
+  answer: string
+  relatedTopics: unknown
+  usedGaps: unknown
+  model: string
+}
+
+// ── Class heatmap (Capability 4A) ────────────────────────────────
+
+export interface HeatmapAlert {
+  topicId: string
+  topicTitle: string
+  strugglingPct: number
+  rootCauseTopicId: string
+  rootCauseTitle: string
+  rootCauseGradeLevel: number
+  rootCauseStudentsStruggling: number
+  message: string
+}
+
+export interface HeatmapTopic {
+  topicId: string
+  title: string
+  studentsStruggling: number
+  strugglingPct: number
+  avgSeverity: number
+  alert?: HeatmapAlert
+}
+
+export interface ClassHeatmapResponse {
+  subjectCode: string
+  gradeLevel: number
+  schoolId: string
+  classSize: number
+  source: string
+  topics: HeatmapTopic[]
+  alerts: HeatmapAlert[]
+}
+
+// ── Exam quality (Capability 4B) ─────────────────────────────────
+
+export interface QuestionQuality {
+  questionId: string
+  sequenceNumber: number
+  questionType: string
+  cloCode?: string
+  gradedAnswers: number
+  discriminationIndex?: number
+  discriminationMethod?: string
+  statedDifficulty?: string
+  actualDifficulty?: string
+  avgScoreRatio: number
+  calibration: 'unrated' | 'accurate' | 'mismatch' | string
+  avgTimeSecs?: number
+  timeAnomaly: boolean
+}
+
+export interface CLOFlag {
+  cloCode: string
+  description?: string
+}
+
+export interface CLOCoverageQuality {
+  mandatoryTotal: number
+  mandatoryTested: number
+  zeroCorrect: CLOFlag[]
+  untested: CLOFlag[]
+}
+
+export interface TimeAnalysisQuality {
+  questionsWithTiming: number
+  medianAvgSecs?: number
+  evaluated: boolean
+}
+
+export interface ExamQualityResponse {
+  examId: string
+  title: string
+  attemptsAnalyzed: number
+  discriminationAvg?: number
+  qualityScore: number
+  questions: QuestionQuality[]
+  cloCoverage: CLOCoverageQuality
+  timeAnalysis: TimeAnalysisQuality
+  computedAt: string
+}
+
+// ── School quality (Capability 4C) ───────────────────────────────
+
+export interface SchoolQualityScore {
+  subjectCode: string
+  gradeLevel: number
+  cloCoveragePct: number
+  studentMasteryPct: number
+  examQualityAvg: number
+  curriculumCompliance: number
+  compositeScore: number
+  flaggedForReview: boolean
+  computedAt: string
+}
+
+export interface SchoolQualityResponse {
+  schoolId: string
+  source: string
+  scores: SchoolQualityScore[]
+}
+
+// ── Ministry / regions / schools / teachers ──────────────────────
+
+export interface MinistryOverviewResponse {
+  total_regions: number
+  total_schools: number
+  total_students: number
+  total_teachers: number
+}
+
+export interface RegionStatsResponse {
+  region_id: string
+  school_count: number
+  student_count: number
+  teacher_count: number
+  avg_assessment_score: number
+}
+
+export interface RegionResponse {
+  id: string
+  name: string
+  code: string
+  created_at: string
+}
+
+export interface SchoolResponse {
+  id: string
+  region_id: string
+  name: string
+  code: string
+  address?: string
+  created_at: string
+}
+
+export interface TeacherResponse {
+  id: string
+  user_id: string
+  school_id: string
+  subject_specialty?: string
+  created_at: string
+}
+
+// ── Career ────────────────────────────────────────────────────────
+
+export interface CareerPathResponse {
+  id: string
+  title: string
+  description?: string
+  required_subjects?: string[]
+  created_at: string
+}
+
+export interface CreateCareerPathRequest {
+  title: string
+  description?: string
+  required_subjects?: string[]
+}
+
+export interface CareerMatchResponse {
+  career_path_id: string
+  title: string
+  score: number
+}
+
+// ── Notifications ────────────────────────────────────────────────
+
+export interface CreateNotificationRequest {
+  user_id: string
+  title: string
+  body: string
+}
+
+export interface NotificationResponse {
+  id: string
+  title: string
+  body: string
+  is_read: boolean
+  created_at: string
 }

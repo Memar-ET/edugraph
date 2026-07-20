@@ -10,12 +10,19 @@ import {
 import { LoginPage } from '@features/auth'
 import { JobReviewPage, UploadPage } from '@features/curriculum'
 import {
+  ExamQualityPage,
   ExamReviewPage,
   ExamUploadPage,
   GradeExamPage,
   StudentExamListPage,
   TakeExamPage,
 } from '@features/assessment'
+import { StudentDashboardPage, TutorPage } from '@features/student'
+import { TeacherDashboardPage } from '@features/teacher'
+import { SchoolAdminDashboardPage } from '@features/school-admin'
+import { RegionalDashboardPage } from '@features/regional'
+import { MinistryDashboardPage } from '@features/ministry'
+import { CareerPathsPage } from '@features/career'
 import {
   canAccessCurriculumReview,
   canAccessStudentDashboard,
@@ -31,6 +38,30 @@ const rootRoute = createRootRoute({
   ),
 })
 
+// Dispatches '/' to the signed-in user's role-specific dashboard. Every
+// role except curriculum_officer lands here (see landingPathFor).
+function DashboardRouter() {
+  const role = useAuthStore((s) => s.user?.role)
+  switch (role) {
+    case 'student':
+      return <StudentDashboardPage />
+    case 'teacher':
+      return <TeacherDashboardPage />
+    case 'school_admin':
+      return <SchoolAdminDashboardPage />
+    case 'regional_admin':
+      return <RegionalDashboardPage />
+    case 'ministry_admin':
+      return <MinistryDashboardPage />
+    default:
+      return (
+        <div className="flex min-h-screen items-center justify-center text-gray-500">
+          Signed in. This role has no dashboard in this build yet.
+        </div>
+      )
+  }
+}
+
 const indexRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/',
@@ -40,11 +71,7 @@ const indexRoute = createRoute({
     const landing = landingPathFor(user?.role)
     if (landing !== '/') throw redirect({ to: landing })
   },
-  component: () => (
-    <div className="flex min-h-screen items-center justify-center text-gray-500">
-      Signed in. This role has no dashboard in this build yet.
-    </div>
-  ),
+  component: DashboardRouter,
 })
 
 const loginRoute = createRoute({
@@ -66,20 +93,27 @@ function requireCurriculumAccess() {
   if (!canAccessCurriculumReview(user?.role)) throw redirect({ to: '/' })
 }
 
-// Guards teacher exam routes (Capabilities 2A/2B/2C Flow 2) -- matches
-// RequireRole(roleTeacher, roleSchoolAdmin) on the Go side.
+// Guards teacher exam routes (Capabilities 2A/2B/2C Flow 2, 4A, 4B) --
+// matches RequireRole(roleTeacher, roleSchoolAdmin) on the Go side.
 function requireTeacherAccess() {
   const { accessToken, user } = useAuthStore.getState()
   if (!accessToken) throw redirect({ to: '/login' })
   if (!canAccessTeacherDashboard(user?.role)) throw redirect({ to: '/' })
 }
 
-// Guards student exam routes (Capability 2C Flow 1) -- matches
-// RequireRole(roleStudent) on the Go side.
+// Guards student exam + tutor routes (Capabilities 2C Flow 1, 3C) --
+// matches RequireRole(roleStudent) on the Go side.
 function requireStudentAccess() {
   const { accessToken, user } = useAuthStore.getState()
   if (!accessToken) throw redirect({ to: '/login' })
   if (!canAccessStudentDashboard(user?.role)) throw redirect({ to: '/' })
+}
+
+// Routes with no server-side role gate beyond "authenticated" (e.g. career
+// paths -- GET is open to any role, POST is further gated inside the page).
+function requireAuth() {
+  const { accessToken } = useAuthStore.getState()
+  if (!accessToken) throw redirect({ to: '/login' })
 }
 
 const uploadRoute = createRoute({
@@ -117,6 +151,13 @@ const gradeExamRoute = createRoute({
   component: GradeExamPage,
 })
 
+const examQualityRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/teacher/exams/$examId/quality',
+  beforeLoad: requireTeacherAccess,
+  component: ExamQualityPage,
+})
+
 const studentExamListRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/student/exams',
@@ -131,6 +172,20 @@ const takeExamRoute = createRoute({
   component: TakeExamPage,
 })
 
+const tutorRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/student/tutor',
+  beforeLoad: requireStudentAccess,
+  component: TutorPage,
+})
+
+const careerPathsRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/career/paths',
+  beforeLoad: requireAuth,
+  component: CareerPathsPage,
+})
+
 const routeTree = rootRoute.addChildren([
   indexRoute,
   loginRoute,
@@ -139,8 +194,11 @@ const routeTree = rootRoute.addChildren([
   examUploadRoute,
   examReviewRoute,
   gradeExamRoute,
+  examQualityRoute,
   studentExamListRoute,
   takeExamRoute,
+  tutorRoute,
+  careerPathsRoute,
 ])
 
 // eslint-disable-next-line react-refresh/only-export-components -- router instance, not a component; main.tsx needs it.

@@ -10,7 +10,7 @@ import {
   type UploadCurriculumFormValues,
 } from '@lib/validations/curriculum'
 import { Banner, Button, Card, CardContent, CardHeader, CardTitle, Input, Label } from '@components/ui'
-import { AppHeader } from '@components/layout/AppHeader'
+import { AppShell } from '@components/layout'
 
 export function UploadPage() {
   const navigate = useNavigate()
@@ -46,15 +46,14 @@ export function UploadPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <AppHeader />
-      <main className="mx-auto max-w-xl px-4 py-8">
+    <AppShell title="Upload curriculum" description="Step 1 of the curriculum pipeline.">
+      <div className="mx-auto max-w-xl">
         <Card>
           <CardHeader>
             <CardTitle>Upload curriculum document</CardTitle>
             <p className="mt-1 text-sm text-gray-500">
-              Step 1: submit a curriculum PDF or DOCX for AI parsing. You&apos;ll review and approve the
-              extracted structure once parsing finishes.
+              Submit a curriculum PDF or DOCX for AI parsing. You&apos;ll review and approve the extracted
+              structure once parsing finishes.
             </p>
           </CardHeader>
           <CardContent>
@@ -98,7 +97,7 @@ export function UploadPage() {
             </form>
           </CardContent>
         </Card>
-      </main>
-    </div>
+      </div>
+    </AppShell>
   )
 }

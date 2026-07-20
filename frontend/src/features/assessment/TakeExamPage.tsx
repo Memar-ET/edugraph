@@ -6,7 +6,7 @@ import { apiErrorMessage } from '@lib/api/client'
 import { listExamQuestions, submitExam } from '@lib/api/endpoints'
 import { queryKeys } from '@lib/query/keys'
 import { Banner, Button, Card, CardContent, CardHeader, CardTitle, Spinner } from '@components/ui'
-import { AppHeader } from '@components/layout/AppHeader'
+import { AppShell } from '@components/layout'
 import type { SubmitExamResponse } from '@/types/api'
 
 const MCQ_OPTIONS = ['A', 'B', 'C', 'D'] as const
@@ -46,9 +46,8 @@ export function TakeExamPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <AppHeader />
-      <main className="mx-auto max-w-2xl px-4 py-8 space-y-4">
+    <AppShell title="Take exam">
+      <div className="mx-auto max-w-2xl space-y-4">
         <Button variant="ghost" size="sm" onClick={() => void navigate({ to: '/student/exams' })}>
           ← Back
         </Button>
@@ -164,7 +163,7 @@ export function TakeExamPage() {
             </div>
           </>
         )}
-      </main>
-    </div>
+      </div>
+    </AppShell>
   )
 }
