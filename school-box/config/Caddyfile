@@ -1,0 +1,51 @@
+# School Box reverse proxy / single LAN entry point -- Capability 2.3.
+#
+# Every other service (api, frontend nginx, ai-service) only listens on
+# the docker-compose network, not on a LAN-facing port -- Caddy is the one
+# thing lab devices actually connect to, at http://<school-box-lan-ip>/.
+# This is what makes "digital exams deliver over the local network when
+# offline" concretely true: student/teacher browsers on the school LAN hit
+# this box directly, with no path to the internet required anywhere in
+# the request.
+#
+# auto_https is deliberately off: a School Box has no public domain name
+# for Caddy's automatic Let's Encrypt flow to work against (there's no
+# internet access to reach Let's Encrypt from during normal offline
+# operation anyway), and a LAN-only deployment behind the school's own
+# network has no untrusted-network exposure that plain HTTP inside the
+# building meaningfully worsens. If a school's IT policy requires TLS on
+# the LAN too, switch this to a self-signed/internal-CA cert and drop the
+# `auto_https off` line -- that's a deployment-specific decision, not
+# something to hardcode here.
+{
+	auto_https off
+}
+
+:80 {
+	# The Go API and its WebSocket upgrade path.
+	handle /api/v1/* {
+		reverse_proxy api:8080
+	}
+	handle /ws/* {
+		reverse_proxy api:8080
+	}
+	handle /health {
+		reverse_proxy api:8080
+	}
+
+	# Everything else -- the frontend SPA's static build (frontend/Dockerfile,
+	# served by its own internal nginx on port 80 inside the compose network).
+	# The frontend's own VITE_API_URL is intentionally left unset in its
+	# build (see docker-compose.yml's frontend service comment) so its
+	# compiled JS calls relative `/api/v1/...` paths, which land right back
+	# on this same Caddy origin and get proxied above -- one image, works
+	# unmodified from any school's LAN IP with no per-school rebuild.
+	handle {
+		reverse_proxy frontend:80
+	}
+
+	log {
+		output stdout
+		format console
+	}
+}

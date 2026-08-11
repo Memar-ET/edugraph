@@ -161,6 +161,9 @@ func newRouter(cfg config.Config, log *zap.Logger, verifier middleware.TokenVeri
 				r.With(middleware.RequireRole(roleTeacher, roleSchoolAdmin)).Post("/upload", h.assessment.UploadExam)
 				r.With(middleware.RequireRole(roleTeacher, roleSchoolAdmin)).Get("/{id}", h.assessment.GetExam)
 				r.With(middleware.RequireRole(roleTeacher, roleSchoolAdmin)).Post("/{id}/validate", h.assessment.ValidateExam)
+				// Capability 2D: fix a wrong subject/grade/exam-type/unit-range
+				// without re-uploading the file, then re-run /validate.
+				r.With(middleware.RequireRole(roleTeacher, roleSchoolAdmin)).Patch("/{id}/scope", h.assessment.UpdateExamScope)
 				r.With(middleware.RequireRole(roleTeacher, roleSchoolAdmin)).Post("/{id}/publish", h.assessment.PublishExam)
 				r.With(middleware.RequireRole(roleTeacher, roleSchoolAdmin)).Post("/{id}/answer-key", h.assessment.UploadAnswerKey)
 				r.With(middleware.RequireRole(roleStudent)).Get("/{id}/questions", h.assessment.ListExamQuestions)
@@ -174,6 +177,13 @@ func newRouter(cfg config.Config, log *zap.Logger, verifier middleware.TokenVeri
 				// Capability 4B: retroactive exam quality report
 				// (discrimination, calibration, time anomalies, CLO coverage).
 				r.With(middleware.RequireRole(roleTeacher, roleSchoolAdmin)).Get("/{id}/quality", h.assessment.GetExamQuality)
+				// Capability 2.2: "Mode B" print-ready exam sheet + optical
+				// answer key (PDF via the browser's own print-to-PDF, see
+				// exam_print_templates.go). Both teacher/school_admin only --
+				// the answer key must never be reachable by students, and the
+				// blank exam sheet is teacher-initiated (print then hand out).
+				r.With(middleware.RequireRole(roleTeacher, roleSchoolAdmin)).Get("/{id}/print", h.assessment.PrintExam)
+				r.With(middleware.RequireRole(roleTeacher, roleSchoolAdmin)).Get("/{id}/print/answer-key", h.assessment.PrintAnswerKey)
 			})
 
 			// ── AI Tutor (Capability 3C: Graph-RAG + Gemini) ──

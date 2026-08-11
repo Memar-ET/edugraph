@@ -72,6 +72,36 @@ func (c *Client) MatchCareers(ctx context.Context, req CareerMatchRequest) ([]Ca
 	return results, nil
 }
 
+type embedPassagesRequest struct {
+	Texts []string `json:"texts"`
+}
+
+// EmbedResult carries back which embedding model actually produced the
+// vectors (stored as embeddings.clo_embeddings.model_ver) alongside the
+// vectors themselves, so a future model change is traceable per row
+// instead of assumed from whatever EMBEDDING_MODEL happens to be
+// configured today.
+type EmbedResult struct {
+	Embeddings [][]float32 `json:"embeddings"`
+	Model      string      `json:"model"`
+	Dim        int         `json:"dim"`
+}
+
+// EmbedPassages calls POST /api/v1/embeddings/passages on the ai-service,
+// which runs each text through the local (non-cloud) embedding model --
+// see ai-service/app/utils/embeddings.py. "Passages" (as opposed to
+// "query") matches the e5-family embedding convention used by curriculum
+// CLO descriptions, which are the documents being searched *against* when
+// an exam question is matched to them (see exam_parser/vector_matcher.py
+// on the ai-service side for the query-side counterpart).
+func (c *Client) EmbedPassages(ctx context.Context, texts []string) (*EmbedResult, error) {
+	var result EmbedResult
+	if err := c.post(ctx, "/api/v1/embeddings/passages", embedPassagesRequest{Texts: texts}, &result); err != nil {
+		return nil, err
+	}
+	return &result, nil
+}
+
 func (c *Client) post(ctx context.Context, path string, body, out any) error {
 	payload, err := json.Marshal(body)
 	if err != nil {

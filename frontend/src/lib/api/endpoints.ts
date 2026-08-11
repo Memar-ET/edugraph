@@ -36,6 +36,8 @@ import type {
   TeacherResponse,
   TutorAskRequest,
   TutorAskResponse,
+  UpdateExamScopeRequest,
+  UpdateExamScopeResponse,
   UploadAnswerKeyResponse,
   UploadExamResponse,
   UploadResponse,
@@ -102,6 +104,22 @@ export async function fetchCurriculumFileBlobUrl(jobId: string): Promise<string>
   return URL.createObjectURL(res.data as Blob)
 }
 
+// Capability 2.2: print-ready exam sheet / answer key. Same blob-url
+// pattern as fetchCurriculumFileBlobUrl -- a plain <a href> can't attach
+// the Bearer token these endpoints require, so we fetch as a blob (the
+// apiClient auth interceptor handles that) and open the resulting object
+// URL in a new tab, where the page's own "Print / Save as PDF" button
+// (baked into the returned HTML) takes over.
+export async function fetchExamPrintBlobUrl(examId: string): Promise<string> {
+  const res = await apiClient.get(`/exams/${examId}/print`, { responseType: 'blob' })
+  return URL.createObjectURL(res.data as Blob)
+}
+
+export async function fetchAnswerKeyPrintBlobUrl(examId: string): Promise<string> {
+  const res = await apiClient.get(`/exams/${examId}/print/answer-key`, { responseType: 'blob' })
+  return URL.createObjectURL(res.data as Blob)
+}
+
 // ── Assessment (Capabilities 2A/2B/2C) ──────────────────────────
 
 export interface UploadExamPayload {
@@ -145,6 +163,17 @@ export async function getExam(examId: string): Promise<ExamStatus> {
 
 export async function validateExam(examId: string): Promise<ValidationReport> {
   const res = await apiClient.post<Envelope<ValidationReport>>(`/exams/${examId}/validate`)
+  return unwrap(res.data)
+}
+
+// Capability 2D: fix a wrong subject/grade/exam-type/unit-range without
+// re-uploading the exam file -- call validateExam() again afterwards to
+// refresh the compliance report against the corrected scope.
+export async function updateExamScope(
+  examId: string,
+  payload: UpdateExamScopeRequest,
+): Promise<UpdateExamScopeResponse> {
+  const res = await apiClient.patch<Envelope<UpdateExamScopeResponse>>(`/exams/${examId}/scope`, payload)
   return unwrap(res.data)
 }
 

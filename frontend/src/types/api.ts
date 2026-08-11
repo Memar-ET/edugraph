@@ -208,12 +208,33 @@ export interface ExamStatus {
   subjectCode: string
   gradeLevel: number
   examScope: ExamScope
+  unitNumbers: number[] | null
   academicYear: string
   totalMarks: number
   questionCount: number
   parseError?: string
   createdAt: string
   validationReport?: ValidationReport
+}
+
+// Capability 2D: correct a wrong subject/grade/exam-type/unit-range
+// without re-uploading the exam file. Every field optional -- only send
+// what needs to change.
+export interface UpdateExamScopeRequest {
+  subjectCode?: string
+  gradeLevel?: number
+  examScope?: ExamScope
+  unitNumbers?: number[]
+}
+
+export interface UpdateExamScopeResponse {
+  examId: string
+  subjectCode: string
+  gradeLevel: number
+  examScope: ExamScope
+  unitNumbers: number[] | null
+  cloRematchQueued: boolean
+  message: string
 }
 
 export interface PublishResponse {

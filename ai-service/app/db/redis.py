@@ -26,6 +26,11 @@ EXAM_PARSE_QUEUE = "queue:exam:parse"
 # answer-key upload needs both which exam to apply it to and where its
 # file bytes live. See app/workers/answer_key_worker.py.
 EXAM_ANSWERKEY_QUEUE = "queue:exam:answerkey"
+# Capability 2D: exam ids pushed by the Go side when a teacher corrects an
+# exam's subject/grade via PATCH .../scope -- consumed by
+# app/workers/exam_rematch_worker.py, which re-runs CLO matching against
+# the already-extracted question text without re-parsing the source file.
+EXAM_REMATCH_QUEUE = "queue:exam:rematch"
 # Capability 3A: attempt ids pushed by the Go side the moment an exam
 # attempt becomes fully graded -- consumed by app/workers/gap_worker.py.
 GAP_ANALYZE_QUEUE = "queue:gap:analyze"

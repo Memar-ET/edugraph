@@ -104,7 +104,7 @@ func (r *Repository) CreateExam(
 // caller can poll while parsing runs.
 func (r *Repository) GetExam(ctx context.Context, examID uuid.UUID) (*dto.ExamStatus, error) {
 	const q = `
-		SELECT e.id, e.status, e.title, e.subject_code, e.grade_level, e.exam_scope,
+		SELECT e.id, e.status, e.title, e.subject_code, e.grade_level, e.exam_scope, e.unit_numbers,
 		       e.academic_year, e.total_marks, e.parse_error, e.created_at, e.validation_report,
 		       (SELECT count(*) FROM assessment.questions q WHERE q.exam_id = e.id)
 		FROM assessment.exams e
@@ -113,7 +113,7 @@ func (r *Repository) GetExam(ctx context.Context, examID uuid.UUID) (*dto.ExamSt
 	var s dto.ExamStatus
 	var reportJSON []byte
 	err := r.pool.QueryRow(ctx, q, examID).Scan(
-		&s.ExamID, &s.Status, &s.Title, &s.SubjectCode, &s.GradeLevel, &s.ExamScope,
+		&s.ExamID, &s.Status, &s.Title, &s.SubjectCode, &s.GradeLevel, &s.ExamScope, &s.UnitNumbers,
 		&s.AcademicYear, &s.TotalMarks, &s.ParseError, &s.CreatedAt, &reportJSON, &s.QuestionCount,
 	)
 	if errors.Is(err, pgx.ErrNoRows) {

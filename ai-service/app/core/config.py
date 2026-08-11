@@ -29,6 +29,18 @@ class Settings(BaseSettings):
     AI_SERVICE_URL: str = "ai-service:8000"
     OLLAMA_HOST: str = "ollama:11434"
     EMBEDDING_MODEL: str = "intfloat/multilingual-e5-large"
+    # Must match this model's real output width -- see
+    # db/migrations/V025__fix_embedding_dimension.sql. Checked defensively
+    # in embeddings-dependent code paths so a future EMBEDDING_MODEL swap
+    # to a different-width model fails loudly instead of silently
+    # corrupting the pgvector columns.
+    EMBEDDING_DIM: int = 1024
+    # Capability 5.1 (exam-to-CLO semantic matching) thresholds, taken
+    # directly from PRD Section 5.1: >=0.85 cosine similarity auto-aligns a
+    # question to a CLO, 0.65-0.84 is flagged for teacher review, <0.65 is
+    # treated as no match (falls through to the keyword/LLM matcher).
+    CLO_MATCH_AUTO_ALIGN_THRESHOLD: float = 0.85
+    CLO_MATCH_NEEDS_REVIEW_THRESHOLD: float = 0.65
     # Capability 2A: Gemini-backed CLO matcher (exam_parser/clo_matcher_llm.py).
     # Empty means "not configured" -- the parser falls back to the plain
     # keyword matcher, never a hard failure.

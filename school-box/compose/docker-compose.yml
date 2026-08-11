@@ -31,6 +31,19 @@ services:
       - OFFLINE_MODE=true
     depends_on: [ollama]
 
+  # Capability 2.3: the SPA itself. Deliberately no VITE_API_URL build arg
+  # baked into this image (see frontend/Dockerfile / frontend/lib/api/
+  # client.ts's default) -- it calls relative /api/v1/... paths, which
+  # Caddy (below) proxies back to `api` on this same box. That's what
+  # makes one shared image work unmodified at any school's LAN IP with no
+  # per-school rebuild, and what makes exam delivery here not depend on
+  # reaching anything outside this docker-compose network.
+  frontend:
+    image: ${ECR_REGISTRY}/edugraph-frontend:${IMAGE_TAG}
+    restart: unless-stopped
+    # Not published to the host -- only Caddy talks to this, on the
+    # compose network, at frontend:80.
+
   postgres:
     image: pgvector/pgvector:pg16
     restart: unless-stopped
@@ -42,7 +55,9 @@ services:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
       test: ['CMD-SHELL', 'pg_isready -U edugraph']
-      interval: 10s; timeout: 5s; retries: 5
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
   neo4j:
     image: neo4j:5.18-community
@@ -76,13 +91,17 @@ services:
       - SYNC_INTERVAL_MINUTES=360
     depends_on: [postgres]
 
+  # Capability 2.3: single LAN-facing entry point -- see
+  # ../config/Caddyfile for the actual routing (api vs frontend) and why
+  # auto_https is off for a LAN-only, no-public-domain deployment.
   caddy:
     image: caddy:alpine
     restart: unless-stopped
-    ports: ['443:443', '80:80']
+    ports: ['80:80']
     volumes:
-      - ../config/caddy.json:/etc/caddy/Caddyfile
+      - ../config/Caddyfile:/etc/caddy/Caddyfile
       - caddy_data:/data
+    depends_on: [api, frontend]
 
   watchtower:
     image: containrrr/watchtower

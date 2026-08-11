@@ -5,12 +5,20 @@ import { useState } from 'react'
 import { useForm } from 'react-hook-form'
 
 import { apiErrorMessage } from '@lib/api/client'
-import { getExam, publishExam, uploadAnswerKey, validateExam } from '@lib/api/endpoints'
+import {
+  fetchAnswerKeyPrintBlobUrl,
+  fetchExamPrintBlobUrl,
+  getExam,
+  publishExam,
+  updateExamScope,
+  uploadAnswerKey,
+  validateExam,
+} from '@lib/api/endpoints'
 import { queryKeys } from '@lib/query/keys'
 import { uploadAnswerKeySchema, type UploadAnswerKeyFormValues } from '@lib/validations/exam'
-import { Banner, Button, Card, CardContent, CardHeader, CardTitle, Input, Spinner } from '@components/ui'
+import { Banner, Button, Card, CardContent, CardHeader, CardTitle, Input, Label, Select, Spinner } from '@components/ui'
 import { AppShell } from '@components/layout'
-import type { ValidationReport } from '@/types/api'
+import type { ExamScope, ValidationReport } from '@/types/api'
 
 const IN_PROGRESS_STATUSES = new Set(['pending', 'parsing'])
 
@@ -75,6 +83,70 @@ export function ExamReviewPage() {
     }
   }
 
+  // Capability 2D: fix a wrong subject/grade/exam-type/unit-range without
+  // re-uploading the exam file (title_parser.go's guess is only ever a
+  // fallback). Collapsed by default so it doesn't clutter the common case
+  // where the title was parsed correctly.
+  const [scopeEditorOpen, setScopeEditorOpen] = useState(false)
+  const [scopeForm, setScopeForm] = useState({ subjectCode: '', gradeLevel: '', examScope: '', unitNumbers: '' })
+  const [savingScope, setSavingScope] = useState(false)
+  const [scopeNotice, setScopeNotice] = useState<string | null>(null)
+
+  const openScopeEditor = () => {
+    if (!exam) return
+    setScopeForm({
+      subjectCode: exam.subjectCode,
+      gradeLevel: String(exam.gradeLevel),
+      examScope: exam.examScope,
+      unitNumbers: (exam.unitNumbers ?? []).join(', '),
+    })
+    setScopeNotice(null)
+    setScopeEditorOpen(true)
+  }
+
+  const handleSaveScope = async () => {
+    setActionError(null)
+    setSavingScope(true)
+    try {
+      const unitNumbers = scopeForm.unitNumbers
+        .split(',')
+        .map((s) => s.trim())
+        .filter(Boolean)
+        .map(Number)
+      const resp = await updateExamScope(examId, {
+        subjectCode: scopeForm.subjectCode || undefined,
+        gradeLevel: scopeForm.gradeLevel ? Number(scopeForm.gradeLevel) : undefined,
+        examScope: (scopeForm.examScope || undefined) as ExamScope | undefined,
+        unitNumbers: unitNumbers.length > 0 ? unitNumbers : undefined,
+      })
+      await queryClient.invalidateQueries({ queryKey: queryKeys.exam(examId) })
+      setScopeNotice(resp.message)
+      setScopeEditorOpen(false)
+    } catch (err) {
+      setActionError(apiErrorMessage(err, 'Could not update exam scope.'))
+    } finally {
+      setSavingScope(false)
+    }
+  }
+
+  // Capability 2.2: open the print-ready exam sheet / answer key in a new
+  // tab (blob URL, see fetchExamPrintBlobUrl's comment for why this can't
+  // just be a plain link). The new tab's own page has the actual
+  // "Print / Save as PDF" button.
+  const [printing, setPrinting] = useState<'exam' | 'answerKey' | null>(null)
+  const openPrintable = async (kind: 'exam' | 'answerKey') => {
+    setActionError(null)
+    setPrinting(kind)
+    try {
+      const url = kind === 'exam' ? await fetchExamPrintBlobUrl(examId) : await fetchAnswerKeyPrintBlobUrl(examId)
+      window.open(url, '_blank')
+    } catch (err) {
+      setActionError(apiErrorMessage(err, 'Could not generate the printable sheet.'))
+    } finally {
+      setPrinting(null)
+    }
+  }
+
   return (
     <AppShell title="Review exam" description="Steps 2/3: AI validation and publishing.">
       <div className="mx-auto max-w-3xl space-y-4">
@@ -99,10 +171,103 @@ export function ExamReviewPage() {
                   {exam.totalMarks} marks · {exam.questionCount} question(s)
                 </p>
               </CardHeader>
-              <CardContent>
+              <CardContent className="space-y-3">
                 <StatusBanner status={exam.status} error={exam.parseError} />
+                {exam.questionCount > 0 && (
+                  <div className="flex flex-wrap gap-2">
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      isLoading={printing === 'exam'}
+                      onClick={() => void openPrintable('exam')}
+                    >
+                      Print exam sheet
+                    </Button>
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      isLoading={printing === 'answerKey'}
+                      onClick={() => void openPrintable('answerKey')}
+                    >
+                      Print answer key
+                    </Button>
+                  </div>
+                )}
               </CardContent>
             </Card>
+
+            {(exam.status === 'draft' || exam.status === 'validation_pending') && (
+              <Card>
+                <CardHeader className="flex flex-row items-center justify-between">
+                  <CardTitle className="text-base">Wrong subject, grade, or unit range?</CardTitle>
+                  {!scopeEditorOpen && (
+                    <Button variant="ghost" size="sm" onClick={openScopeEditor}>
+                      Fix scope
+                    </Button>
+                  )}
+                </CardHeader>
+                {scopeEditorOpen && (
+                  <CardContent className="space-y-3">
+                    <p className="text-sm text-gray-500">
+                      The title was used to guess subject/grade/type/units at upload. Correct any of them here —
+                      no need to re-upload the file.
+                    </p>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <Label htmlFor="scope-subject">Subject code</Label>
+                        <Input
+                          id="scope-subject"
+                          value={scopeForm.subjectCode}
+                          onChange={(e) => setScopeForm((f) => ({ ...f, subjectCode: e.target.value }))}
+                        />
+                      </div>
+                      <div>
+                        <Label htmlFor="scope-grade">Grade level</Label>
+                        <Input
+                          id="scope-grade"
+                          type="number"
+                          min={1}
+                          max={12}
+                          value={scopeForm.gradeLevel}
+                          onChange={(e) => setScopeForm((f) => ({ ...f, gradeLevel: e.target.value }))}
+                        />
+                      </div>
+                      <div>
+                        <Label htmlFor="scope-type">Exam type</Label>
+                        <Select
+                          id="scope-type"
+                          value={scopeForm.examScope}
+                          onChange={(e) => setScopeForm((f) => ({ ...f, examScope: e.target.value }))}
+                        >
+                          <option value="unit_test">Unit test</option>
+                          <option value="midterm">Midterm</option>
+                          <option value="final_exam">Final exam</option>
+                        </Select>
+                      </div>
+                      <div>
+                        <Label htmlFor="scope-units">Units (comma-separated, blank = all)</Label>
+                        <Input
+                          id="scope-units"
+                          placeholder="e.g. 1, 2, 3"
+                          value={scopeForm.unitNumbers}
+                          onChange={(e) => setScopeForm((f) => ({ ...f, unitNumbers: e.target.value }))}
+                        />
+                      </div>
+                    </div>
+                    <div className="flex justify-end gap-2">
+                      <Button variant="ghost" onClick={() => setScopeEditorOpen(false)}>
+                        Cancel
+                      </Button>
+                      <Button isLoading={savingScope} onClick={() => void handleSaveScope()}>
+                        Save scope
+                      </Button>
+                    </div>
+                  </CardContent>
+                )}
+              </Card>
+            )}
+
+            {scopeNotice && <Banner tone="info">{scopeNotice}</Banner>}
 
             {actionError && <Banner tone="error">{actionError}</Banner>}
 

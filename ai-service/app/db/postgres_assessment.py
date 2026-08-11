@@ -227,3 +227,50 @@ async def mark_exam_failed(exam_id: str, error: str) -> None:
         exam_id,
         error[:4000],  # keep it sane in case of a huge traceback
     )
+
+
+async def fetch_exam_for_rematch(exam_id: str) -> Optional[asyncpg.Record]:
+    """
+    Capability 2D: the exam row a queue:exam:rematch job points to, after a
+    teacher corrected subjectCode/gradeLevel via PATCH .../scope. Only
+    subject_code matters for rematching (it's what fetch_clos_for_subject
+    filters on) -- included here rather than reusing fetch_exam() so this
+    module's rematch functions don't implicitly depend on exam_worker's
+    file_s3_key/status columns they don't need.
+    """
+    pool = await get_pool()
+    return await pool.fetchrow(
+        "SELECT id, school_id, subject_code FROM assessment.exams WHERE id = $1",
+        exam_id,
+    )
+
+
+async def fetch_questions_for_rematch(exam_id: str) -> list[asyncpg.Record]:
+    """Every question on the exam, for re-running CLO matching against a
+    (possibly just-corrected) subject's CLO set -- no file re-parsing
+    needed, question_text/question_type are already saved."""
+    pool = await get_pool()
+    return await pool.fetch(
+        "SELECT id, question_text FROM assessment.questions WHERE exam_id = $1 ORDER BY sequence_number",
+        exam_id,
+    )
+
+
+async def update_question_clo_match(question_id: str, clo_code: Optional[str], score: Optional[float], method: Optional[str]) -> None:
+    """Overwrites a single question's CLO match in place (Capability 2D
+    rematch) -- unlike save_exam_questions' full delete+reinsert, this
+    never touches question_text/marks/answer_key/options, which the
+    original 2A parse already got right."""
+    pool = await get_pool()
+    await pool.execute(
+        """
+        UPDATE assessment.questions
+        SET clo_code = $2, clo_align_score = $3, clo_align_method = $4
+        WHERE id = $1
+        """,
+        question_id,
+        clo_code,
+        # Same Decimal(str(...)) precision-preservation as save_exam_questions.
+        Decimal(str(score)) if score is not None else None,
+        method,
+    )
