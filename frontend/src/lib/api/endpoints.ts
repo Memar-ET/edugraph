@@ -37,6 +37,7 @@ import type {
   StudentResponse,
   StudyPlan,
   SubjectGraph,
+  SubjectListItem,
   SubjectProfile,
   SubjectVersion,
   SubmitExamRequest,
@@ -397,6 +398,11 @@ export async function supersedeSubject(newCode: string, previousCode: string): P
     `/curriculum/subjects/${encodeURIComponent(newCode)}/supersede`,
     { previousCode },
   )
+  return unwrap(res.data)
+}
+
+export async function listSubjects(): Promise<SubjectListItem[]> {
+  const res = await apiClient.get<Envelope<SubjectListItem[]>>('/curriculum/subjects')
   return unwrap(res.data)
 }
 

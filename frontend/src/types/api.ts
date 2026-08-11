@@ -145,6 +145,28 @@ export interface JobListItem {
   approvedAt?: string
 }
 
+/** One row of GET /curriculum/subjects -- the Ministry curriculum browser (every promoted subject, not just one uploader's). */
+export interface SubjectListItem {
+  code: string
+  nameEn: string
+  nameAm?: string
+  gradeLevel: number
+  academicYear: string
+  moeCode?: string
+  isMandatory: boolean
+  version: number
+  isCurrent: boolean
+  previousVersionCode?: string
+  fileName?: string
+  uploadedByName?: string
+  approvedAt?: string
+  createdAt: string
+  unitCount: number
+  topicCount: number
+  subtopicCount: number
+  cloCount: number
+}
+
 // ── Topic prerequisites (backend/internal/curriculum/dto/{prerequisites,topic_list}.go) ──
 
 /** One row of GET /curriculum/subjects/{code}/topics -- backs the prerequisites UI's topic picker. */

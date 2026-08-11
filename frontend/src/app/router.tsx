@@ -13,6 +13,8 @@ import {
   CurriculumGraphPage,
   CurriculumVersionsPage,
   JobReviewPage,
+  MinistryCurriculumDetailPage,
+  MinistryCurriculumPage,
   PrerequisitesPage,
   UploadPage,
 } from '@features/curriculum'
@@ -158,6 +160,20 @@ const curriculumGraphRoute = createRoute({
   component: CurriculumGraphPage,
 })
 
+const ministryCurriculumRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/ministry/curriculum',
+  beforeLoad: requireCurriculumAccess,
+  component: MinistryCurriculumPage,
+})
+
+const ministryCurriculumDetailRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/ministry/curriculum/$code',
+  beforeLoad: requireCurriculumAccess,
+  component: MinistryCurriculumDetailPage,
+})
+
 const jobReviewRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/curriculum/jobs/$jobId',
@@ -229,6 +245,8 @@ const routeTree = rootRoute.addChildren([
   prerequisitesRoute,
   curriculumVersionsRoute,
   curriculumGraphRoute,
+  ministryCurriculumRoute,
+  ministryCurriculumDetailRoute,
   jobReviewRoute,
   examUploadRoute,
   examReviewRoute,

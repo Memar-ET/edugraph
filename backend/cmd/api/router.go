@@ -167,6 +167,8 @@ func newRouter(cfg config.Config, log *zap.Logger, verifier middleware.TokenVeri
 				// Flat topic list for the prerequisites UI's topic picker --
 				// no general "browse the curriculum" endpoint exists.
 				r.Get("/subjects/{code}/topics", h.curriculum.ListTopicsBySubject)
+				// Ministry curriculum browser: every promoted subject system-wide.
+				r.With(middleware.RequireRole(roleMinistryAdmin, roleCurriculumOfficer)).Get("/subjects", h.curriculum.ListSubjects)
 				// Neo4j knowledge-graph subtree for a subject -- backs the
 				// frontend graph visualization.
 				r.Get("/subjects/{code}/graph", h.curriculum.GetSubjectGraph)

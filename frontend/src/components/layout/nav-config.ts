@@ -6,6 +6,7 @@ import {
   GitBranch,
   HelpCircle,
   LayoutDashboard,
+  ListTree,
   MessageCircleQuestion,
   Network,
   Settings,
@@ -62,6 +63,7 @@ export function getNavItems(role: Role | undefined): NavItem[] {
     case 'ministry_admin':
       return [
         { label: 'Dashboard', to: '/', icon: LayoutDashboard, section: 'General' },
+        { label: 'Curriculum by Subject', to: '/ministry/curriculum', icon: ListTree, section: 'General' },
         { label: 'Curriculum Specification', to: '/curriculum/upload', icon: FileStack, section: 'General' },
         { label: 'Prerequisites', to: '/curriculum/prerequisites', icon: Network, section: 'General' },
         { label: 'Curriculum Versions', to: '/curriculum/versions', icon: GitBranch, section: 'General' },
