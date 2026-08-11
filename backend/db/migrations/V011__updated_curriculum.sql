@@ -1,21 +1,9 @@
 -- V011_updated_curriculum.sql
 -- Replaces old flat curriculum tables with proper schema-based deep hierarchy
+-- BACKWARD COMPATIBLE: Keeps old tables, creates new schema-based tables
 
 -- =====================================================
--- STEP 1: Drop old incorrect tables (in correct order)
--- =====================================================
-
--- Drop dependent tables first
-DROP TABLE IF EXISTS career_matches CASCADE;
-DROP TABLE IF EXISTS assessment_results CASCADE;
-DROP TABLE IF EXISTS assessment_questions CASCADE;
-DROP TABLE IF EXISTS assessments CASCADE;
-DROP TABLE IF EXISTS career_paths CASCADE;
-DROP TABLE IF EXISTS curriculum_units CASCADE;
-DROP TABLE IF EXISTS subjects CASCADE;
-
--- =====================================================
--- STEP 2: Create curriculum schema
+-- STEP 1: Create curriculum schema
 -- =====================================================
 
 CREATE SCHEMA IF NOT EXISTS curriculum;
@@ -129,7 +117,7 @@ CREATE TABLE curriculum.topic_clo_mappings (
 );
 
 -- =====================================================
--- STEP 3: Create assessment schema
+-- STEP 2: Create assessment schema
 -- =====================================================
 
 CREATE SCHEMA IF NOT EXISTS assessment;
@@ -231,7 +219,7 @@ CREATE INDEX idx_answers_school_id_passed ON assessment.student_answers(school_i
 CREATE INDEX idx_answers_neo4j ON assessment.student_answers(neo4j_written) WHERE NOT neo4j_written;
 
 -- =====================================================
--- STEP 4: Create careers schema
+-- STEP 3: Create careers schema
 -- =====================================================
 
 CREATE SCHEMA IF NOT EXISTS careers;
@@ -271,7 +259,7 @@ CREATE TABLE careers.career_matches (
 CREATE INDEX idx_career_matches_student_id ON careers.career_matches(student_id);
 
 -- =====================================================
--- STEP 5: Create embeddings schema (pgvector)
+-- STEP 4: Create embeddings schema (pgvector)
 -- =====================================================
 
 CREATE SCHEMA IF NOT EXISTS embeddings;
@@ -301,7 +289,7 @@ CREATE INDEX idx_q_emb_hnsw ON embeddings.question_embeddings
     USING hnsw (embedding vector_cosine_ops);
 
 -- =====================================================
--- STEP 6: Create students schema additions
+-- STEP 5: Create students schema additions
 -- =====================================================
 
 CREATE SCHEMA IF NOT EXISTS students;
