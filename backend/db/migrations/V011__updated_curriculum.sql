@@ -1,6 +1,7 @@
 -- V011_updated_curriculum.sql
 -- Replaces old flat curriculum tables with proper schema-based deep hierarchy
 -- BACKWARD COMPATIBLE: Keeps old tables, creates new schema-based tables
+-- NOTE: Old tables in public schema are preserved for gradual migration
 
 -- =====================================================
 -- STEP 1: Create curriculum schema
@@ -264,11 +265,11 @@ CREATE INDEX idx_career_matches_student_id ON careers.career_matches(student_id)
 
 CREATE SCHEMA IF NOT EXISTS embeddings;
 
--- CLO Embeddings (FIXED: 768 dimensions, not 1024!)
+-- CLO Embeddings (768 dimensions for multilingual-e5-large)
 CREATE TABLE embeddings.clo_embeddings (
     id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     clo_code    TEXT UNIQUE NOT NULL REFERENCES curriculum.clos(code) ON DELETE CASCADE,
-    embedding   vector(768) NOT NULL,  -- ← CRITICAL FIX: multilingual-e5-large outputs 768
+    embedding   vector(768) NOT NULL,
     model_ver   TEXT NOT NULL,
     created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
 );
@@ -277,7 +278,7 @@ CREATE TABLE embeddings.clo_embeddings (
 CREATE TABLE embeddings.question_embeddings (
     id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     question_id UUID UNIQUE NOT NULL REFERENCES assessment.questions(id) ON DELETE CASCADE,
-    embedding   vector(768) NOT NULL,  -- ← CRITICAL FIX
+    embedding   vector(768) NOT NULL,
     model_ver   TEXT NOT NULL,
     created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
 );
@@ -345,12 +346,3 @@ CREATE TABLE students.study_plans (
 );
 
 CREATE INDEX idx_study_plans_student_id ON students.study_plans(student_id);
-
--- =====================================================
--- STEP 6: Archive old tables (mark for future deprecation)
--- =====================================================
--- IMPORTANT: Old tables (subjects, curriculum_units, assessments, assessment_questions,
--- assessment_results, career_paths, career_matches) are preserved in the public schema.
--- These should be gradually migrated to the new schema-based tables.
--- They can be removed in a future migration (V0XX__remove_deprecated_tables.sql) after
--- confirming all application code has migrated to the new schemas.
