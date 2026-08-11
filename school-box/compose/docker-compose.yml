@@ -82,14 +82,24 @@ services:
       - ollama_models:/root/.ollama
     # Pre-pull models on first start: ollama pull qwen2.5:7b-instruct-q4_K_M
 
+  # Drains sync.outbox (backend/db/migrations/V026__sync_outbox.sql) to the
+  # cloud and applies pulled changes back, on SYNC_INTERVAL_MINUTES. Needs
+  # its own POSTGRES_* vars (not just `depends_on: postgres`) since it talks
+  # to the local database directly, same as `api` does.
   sync-agent:
     image: ${ECR_REGISTRY}/edugraph-sync-agent:${IMAGE_TAG}
     restart: unless-stopped
     environment:
       - CLOUD_SYNC_ENDPOINT=${CLOUD_SYNC_URL}
       - SCHOOL_BOX_ID=${SCHOOL_BOX_ID}
+      - SCHOOL_ID=${SCHOOL_ID}
       - SYNC_INTERVAL_MINUTES=360
-    depends_on: [postgres]
+      - POSTGRES_HOST=postgres
+      - POSTGRES_DB=edugraph
+      - POSTGRES_USER=edugraph
+    env_file: ../.env.school-box
+    depends_on:
+      postgres: { condition: service_healthy }
 
   # Capability 2.3: single LAN-facing entry point -- see
   # ../config/Caddyfile for the actual routing (api vs frontend) and why
