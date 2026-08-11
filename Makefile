@@ -7,6 +7,10 @@ help: ## Show this help
 dev: ## Start all services locally (Docker Compose)
 	docker compose up --build
 
+dev-up: ## Start full stack + run migrations
+	docker compose up -d --build
+	docker compose run --rm flyway
+
 dev-backend: ## Start backend only with hot reload
 	cd backend && air
 
@@ -58,12 +62,13 @@ build-frontend:
 build-ai:
 	cd ai-service && pip install -r requirements.txt
 
-# ── Database ─────────────────────────────────────────────────
-migrate: ## Run PostgreSQL migrations
-	cd backend && flyway migrate
+# ── Database (Docker-first) ─────────────────────────────────
 
-migrate-status: ## Show migration status
-	cd backend && flyway info
+migrate-docker: ## Run PostgreSQL migrations using Flyway in Docker
+	docker compose run --rm flyway
+
+migrate-status: ## Show migration status (via Docker Flyway)
+	docker compose run --rm flyway info
 
 migrate-neo4j: ## Run Neo4j migrations
 	cd backend && go run ./cmd/migrate neo4j

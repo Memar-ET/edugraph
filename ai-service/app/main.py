@@ -1,53 +1,52 @@
+import asyncio
 from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.middleware.trustedhost import TrustedHostMiddleware
 
-from app.core.config import settings
+from app.api.v1.routes import tutor as tutor_routes
 from app.core.logging import configure_logging
-from app.api.v1.routes import exam, gap, plan, career, tutor, policy, health
-from app.db.neo4j import get_neo4j_driver
-from app.db.redis import get_redis_client
-from app.db.postgres import get_pg_pool
+from app.db.neo4j import close_neo4j
+from app.db.postgres import close_pool
+from app.db.redis import close_redis
+from app.workers import answer_key_worker, curriculum_worker, exam_worker, gap_worker, study_plan_worker
 
-configure_logging()
+logger = configure_logging()
+
+WORKERS = (curriculum_worker, exam_worker, answer_key_worker, gap_worker, study_plan_worker)
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Startup and shutdown."""
-    # Startup
-    app.state.neo4j = await get_neo4j_driver()
-    app.state.redis = await get_redis_client()
-    app.state.pg    = await get_pg_pool()
+    # Run the curriculum-, exam-, and answer-key-parsing queue consumers as
+    # background tasks alongside the API. In production you'd more likely
+    # run each as its own container/process (see each worker module's
+    # docstring) so parsing load doesn't compete with request handling, but
+    # background tasks keep local dev/docker-compose simple since only one
+    # ai-service container is defined.
+    tasks = [asyncio.create_task(w.run_forever()) for w in WORKERS]
+    logger.info("ai_service.startup", workers=[w.__name__ for w in WORKERS])
+
     yield
-    # Shutdown
-    await app.state.neo4j.close()
-    await app.state.redis.aclose()
-    await app.state.pg.close()
+
+    for w in WORKERS:
+        w.request_shutdown()
+    for task in tasks:
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
+    await close_pool()
+    await close_redis()
+    await close_neo4j()
+    logger.info("ai_service.shutdown")
 
 
-app = FastAPI(
-    title="EduGraph AI Service",
-    version="0.1.0",
-    lifespan=lifespan,
-    docs_url="/docs" if settings.APP_ENV != "production" else None,
-    redoc_url=None,
-)
+app = FastAPI(lifespan=lifespan)
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=settings.CORS_ORIGINS,
-    allow_methods=["POST", "GET"],
-    allow_headers=["Authorization", "Content-Type"],
-)
-app.add_middleware(TrustedHostMiddleware, allowed_hosts=settings.ALLOWED_HOSTS)
+app.include_router(tutor_routes.router)
 
-# Routers
-app.include_router(health.router, prefix="/health", tags=["health"])
-app.include_router(exam.router,   prefix="/api/v1/exam",   tags=["exam"])
-app.include_router(gap.router,    prefix="/api/v1/gap",    tags=["gap"])
-app.include_router(plan.router,   prefix="/api/v1/plan",   tags=["plan"])
-app.include_router(career.router, prefix="/api/v1/career", tags=["career"])
-app.include_router(tutor.router,  prefix="/api/v1/tutor",  tags=["tutor"])
-app.include_router(policy.router, prefix="/api/v1/policy", tags=["policy"])
+
+@app.get("/")
+def health():
+    return {"status": "ok"}

@@ -1,0 +1,1 @@
+{"nodes": [{"id": "d_edugraph_project_edugraph_backend_db_migrations_v001_extensions_and_enums_sql", "label": "V001__extensions_and_enums.sql", "file_type": "code", "source_file": "backend/db/migrations/V001__extensions_and_enums.sql", "source_location": null}], "edges": []}

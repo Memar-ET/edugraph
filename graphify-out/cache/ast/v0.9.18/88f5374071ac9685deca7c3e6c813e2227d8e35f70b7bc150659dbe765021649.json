@@ -1,0 +1,1 @@
+{"nodes": [{"id": "d_edugraph_project_edugraph_infra_terraform_modules_rds_variables_tf", "label": "variables.tf", "file_type": "code", "source_file": "infra/terraform/modules/rds/variables.tf", "source_location": null}], "edges": []}

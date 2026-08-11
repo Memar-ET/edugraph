@@ -18,9 +18,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # go-version-file keeps the toolchain in lockstep with go.mod --
+      # a pinned '1.22' here + a newer go directive made golangci-lint
+      # choke on export data from the auto-downloaded newer toolchain.
       - uses: actions/setup-go@v5
         with:
-          go-version: '1.22'
+          go-version-file: backend/go.mod
           cache-dependency-path: backend/go.sum
 
       - name: Check if Go source files exist
@@ -30,11 +33,14 @@ jobs:
           echo "go_files=$COUNT" >> $GITHUB_OUTPUT
           echo "Found $COUNT Go source files"
 
+      # v2.x is required for Go 1.25 support (v1.x ended at Go 1.24);
+      # action@v8 is the matching action major for v2 binaries, and
+      # backend/.golangci.yml is in v2 config format.
       - name: golangci-lint
         if: steps.check.outputs.go_files > 0
-        uses: golangci/golangci-lint-action@v4
+        uses: golangci/golangci-lint-action@v8
         with:
-          version: v1.57
+          version: v2.5.0
           working-directory: backend
 
       - name: Skip — no Go source files yet
@@ -81,7 +87,7 @@ jobs:
 
       - uses: actions/setup-go@v5
         with:
-          go-version: '1.22'
+          go-version-file: backend/go.mod
           cache-dependency-path: backend/go.sum
 
       - name: Check if Go source files exist
@@ -108,58 +114,39 @@ jobs:
           NEO4J_URI: bolt://localhost:7687
           NEO4J_USER: neo4j
           NEO4J_PASSWORD: testpass
-          REDIS_URL: redis://localhost:6379
+          REDIS_URL: redis:6379
 
       - name: Skip — no Go source files yet
         if: steps.check.outputs.go_files == 0
         run: echo "✓ No Go source files yet — tests skipped. Add code to activate this check."
 
   # ── Frontend ─────────────────────────────────────────────────
+  # The frontend uses npm (package-lock.json is committed) -- the earlier
+  # pnpm setup failed at setup-node cache resolution because
+  # frontend/pnpm-lock.yaml has never existed in this repo.
   frontend-lint:
     name: Frontend — Lint + Type Check
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
-      - uses: pnpm/action-setup@v3
-        with:
-          version: 9
-
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
-          cache: pnpm
-          cache-dependency-path: frontend/pnpm-lock.yaml
-
-      - name: Check if pnpm-lock.yaml exists
-        id: check
-        run: |
-          if [ -f frontend/pnpm-lock.yaml ]; then
-            echo "lockfile=true" >> $GITHUB_OUTPUT
-          else
-            echo "lockfile=false" >> $GITHUB_OUTPUT
-          fi
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
 
       - name: Install dependencies
-        if: steps.check.outputs.lockfile == 'true'
         working-directory: frontend
-        run: pnpm install --frozen-lockfile
+        run: npm ci
 
       - name: Lint
-        if: steps.check.outputs.lockfile == 'true'
         working-directory: frontend
-        run: pnpm lint || echo "Lint config not yet set up"
+        run: npm run lint
 
       - name: Type check
-        if: steps.check.outputs.lockfile == 'true'
         working-directory: frontend
-        run: pnpm type-check || echo "Type check not yet configured"
-
-      - name: Skip — no lockfile yet
-        if: steps.check.outputs.lockfile == 'false'
-        run: |
-          echo "✓ frontend/pnpm-lock.yaml not found — lint skipped."
-          echo "Run: cd frontend && pnpm install  then commit pnpm-lock.yaml"
+        run: npm run type-check
 
   frontend-test:
     name: Frontend — Unit Tests
@@ -167,35 +154,20 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: pnpm/action-setup@v3
-        with:
-          version: 9
-
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
-          cache: pnpm
-          cache-dependency-path: frontend/pnpm-lock.yaml
-
-      - name: Check if pnpm-lock.yaml exists
-        id: check
-        run: |
-          if [ -f frontend/pnpm-lock.yaml ]; then
-            echo "lockfile=true" >> $GITHUB_OUTPUT
-          else
-            echo "lockfile=false" >> $GITHUB_OUTPUT
-          fi
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
 
       - name: Install and test
-        if: steps.check.outputs.lockfile == 'true'
         working-directory: frontend
+        # vitest exits non-zero when no test files exist yet -- tolerate
+        # that until the first *.test.tsx lands, same philosophy as the
+        # other activate-when-ready checks in this workflow.
         run: |
-          pnpm install --frozen-lockfile
-          pnpm test || echo "No tests yet"
-
-      - name: Skip — no lockfile yet
-        if: steps.check.outputs.lockfile == 'false'
-        run: echo "✓ No lockfile — tests skipped."
+          npm ci
+          npm test || echo "No tests yet"
 
   # ── AI Service ───────────────────────────────────────────────
   ai-lint:
@@ -270,17 +242,22 @@ jobs:
     name: Build Docker Images
     runs-on: ubuntu-latest
     needs: [backend-test, frontend-test, ai-test]
-    # Only run when AWS secrets are configured
-    if: |
-      github.event_name == 'push' &&
-      vars.ECR_REGISTRY != '' &&
-      secrets.AWS_ACCESS_KEY_ID != ''
+    # Only run when the ECR registry var is configured. NOTE: the
+    # `secrets` context is NOT available in job-level `if` -- referencing
+    # it here made the whole workflow file invalid (every run failed with
+    # "Invalid workflow file" before any job started). Secrets presence
+    # is checked in the first step instead, where the context IS allowed.
+    if: github.event_name == 'push' && vars.ECR_REGISTRY != ''
     steps:
       - uses: actions/checkout@v4
 
-      - name: Check secrets configured
+      - name: Check AWS secrets configured
         run: |
-          echo "ECR_REGISTRY is set — proceeding with Docker build"
+          if [ -z "${{ secrets.AWS_ACCESS_KEY_ID }}" ]; then
+            echo "::error::ECR_REGISTRY variable is set but AWS_ACCESS_KEY_ID secret is missing"
+            exit 1
+          fi
+          echo "ECR_REGISTRY and AWS credentials are set — proceeding with Docker build"
 
       - uses: docker/setup-buildx-action@v3
 

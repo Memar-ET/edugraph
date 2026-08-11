@@ -1,0 +1,33 @@
+import { useNavigate } from '@tanstack/react-router'
+
+import { Button } from '@components/ui'
+import { useAuthStore } from '@stores/auth.store'
+
+export function AppHeader() {
+  const navigate = useNavigate()
+  const user = useAuthStore((s) => s.user)
+  const clearAuth = useAuthStore((s) => s.clearAuth)
+
+  const handleLogout = () => {
+    clearAuth()
+    void navigate({ to: '/login' })
+  }
+
+  return (
+    <header className="border-b border-gray-200 bg-white">
+      <div className="mx-auto flex max-w-4xl items-center justify-between px-4 py-3">
+        <span className="text-lg font-semibold text-gray-900">EduGraph AI</span>
+        {user && (
+          <div className="flex items-center gap-3 text-sm text-gray-600">
+            <span>
+              {user.full_name} <span className="text-gray-400">({user.role})</span>
+            </span>
+            <Button variant="ghost" size="sm" onClick={handleLogout}>
+              Sign out
+            </Button>
+          </div>
+        )}
+      </div>
+    </header>
+  )
+}

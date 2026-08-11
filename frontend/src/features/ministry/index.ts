@@ -1,0 +1,1 @@
+export { MinistryDashboardPage } from './MinistryDashboardPage'
