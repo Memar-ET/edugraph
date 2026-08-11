@@ -28,7 +28,7 @@ CREATE TABLE curriculum.upload_jobs (
     updated_at      TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
--- Subjects: top-level container
+-- Subjects: top-level container (new schema-based version)
 CREATE TABLE curriculum.subjects (
     code            TEXT PRIMARY KEY,
     name_en         TEXT NOT NULL,
@@ -41,7 +41,7 @@ CREATE TABLE curriculum.subjects (
     created_at      TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
--- Units: chapters inside subjects
+-- Units: chapters inside subjects (new schema-based version)
 CREATE TABLE curriculum.units (
     id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     subject_code    TEXT NOT NULL REFERENCES curriculum.subjects(code) ON DELETE CASCADE,
@@ -122,7 +122,7 @@ CREATE TABLE curriculum.topic_clo_mappings (
 
 CREATE SCHEMA IF NOT EXISTS assessment;
 
--- Exams
+-- Exams (new schema-based version)
 CREATE TABLE assessment.exams (
     id                   UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     created_by           UUID NOT NULL REFERENCES users(id),
@@ -147,7 +147,7 @@ CREATE TABLE assessment.exams (
 CREATE INDEX idx_assessments_school_id ON assessment.exams(school_id);
 CREATE INDEX idx_assessments_subject_id ON assessment.exams(subject_code, grade_level);
 
--- Questions
+-- Questions (new schema-based version)
 CREATE TABLE assessment.questions (
     id                UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     exam_id           UUID NOT NULL REFERENCES assessment.exams(id) ON DELETE CASCADE,
@@ -246,7 +246,7 @@ CREATE TABLE careers.career_topic_requirements (
     UNIQUE (career_id, topic_id)
 );
 
--- Career Matches (student recommendations)
+-- Career Matches (student recommendations) - new schema-based version
 CREATE TABLE careers.career_matches (
     id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     student_id      UUID NOT NULL REFERENCES students(id) ON DELETE CASCADE,
@@ -345,3 +345,12 @@ CREATE TABLE students.study_plans (
 );
 
 CREATE INDEX idx_study_plans_student_id ON students.study_plans(student_id);
+
+-- =====================================================
+-- STEP 6: Archive old tables (mark for future deprecation)
+-- =====================================================
+-- IMPORTANT: Old tables (subjects, curriculum_units, assessments, assessment_questions,
+-- assessment_results, career_paths, career_matches) are preserved in the public schema.
+-- These should be gradually migrated to the new schema-based tables.
+-- They can be removed in a future migration (V0XX__remove_deprecated_tables.sql) after
+-- confirming all application code has migrated to the new schemas.
