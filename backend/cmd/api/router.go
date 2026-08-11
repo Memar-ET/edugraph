@@ -154,6 +154,22 @@ func newRouter(cfg config.Config, log *zap.Logger, verifier middleware.TokenVeri
 				// Topic prerequisite graph (feeds 3A root causes + 3B topo sort).
 				r.With(middleware.RequireRole(roleMinistryAdmin, roleTeacher, roleCurriculumOfficer)).Post("/topics/{id}/prerequisites", h.curriculum.AddTopicPrerequisite)
 				r.Get("/topics/{id}/prerequisites", h.curriculum.ListTopicPrerequisites)
+				// Feature 1.4: confirm a link (typically one created "ai_inferred").
+				r.With(middleware.RequireRole(roleMinistryAdmin, roleTeacher, roleCurriculumOfficer)).Patch("/topics/{id}/prerequisites/{prereqId}/validate", h.curriculum.ValidatePrerequisite)
+				// Feature 1.5: bulk catch-up sync of the whole prerequisite graph into Neo4j.
+				r.With(middleware.RequireRole(roleMinistryAdmin)).Post("/prerequisites/resync", h.curriculum.ResyncPrerequisites)
+				// Curriculum Officer dashboard: the officer's own upload/approval history.
+				r.With(middleware.RequireRole(roleCurriculumOfficer, roleMinistryAdmin)).Get("/jobs", h.curriculum.ListJobs)
+				// Mid-year revisions (feature 1.3): link an already-approved
+				// subject code as the version that supersedes another.
+				r.With(middleware.RequireRole(roleCurriculumOfficer, roleMinistryAdmin)).Post("/subjects/{code}/supersede", h.curriculum.Supersede)
+				r.Get("/subjects/{code}/versions", h.curriculum.ListSubjectVersions)
+				// Flat topic list for the prerequisites UI's topic picker --
+				// no general "browse the curriculum" endpoint exists.
+				r.Get("/subjects/{code}/topics", h.curriculum.ListTopicsBySubject)
+				// Neo4j knowledge-graph subtree for a subject -- backs the
+				// frontend graph visualization.
+				r.Get("/subjects/{code}/graph", h.curriculum.GetSubjectGraph)
 			})
 
 			// ── Exams (Capability 2A: upload + AI parsing; 2B: AI validation report; 2C: submission) ──

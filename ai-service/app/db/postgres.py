@@ -5,10 +5,13 @@ Two tables matter here:
   - curriculum.upload_jobs  -- job metadata + status + the parsed_structure
                                JSONB column this worker fills in (see
                                migration V012).
-  - storage.local_files     -- where the raw uploaded bytes live in dev
+  - app_storage.local_files -- where the raw uploaded bytes live in dev
                                mode (see pkg/storage/postgres.go on the Go
                                side). upload_jobs.file_s3_key holds the id
-                               of the row in this table.
+                               of the row in this table. Schema is
+                               app_storage, not storage -- that name
+                               collides with Supabase's own Storage-product
+                               schema (see migration V027).
 """
 
 from __future__ import annotations
@@ -61,18 +64,18 @@ async def fetch_file_bytes(file_ref: str) -> bytes:
     Download the raw file bytes for a job's file_s3_key.
 
     In dev mode, file_s3_key is actually the UUID of a row in
-    storage.local_files (see pkg/storage/postgres.go's PostgresStorage).
+    app_storage.local_files (see pkg/storage/postgres.go's PostgresStorage).
     When the app moves to S3 in production, this function is the only
     place that needs to change -- swap it for an S3 GetObject call using
     the same file_ref as the S3 key.
     """
     pool = await get_pool()
     row = await pool.fetchrow(
-        "SELECT file_data FROM storage.local_files WHERE id = $1",
+        "SELECT file_data FROM app_storage.local_files WHERE id = $1",
         file_ref,
     )
     if row is None:
-        raise FileNotFoundError(f"no storage.local_files row for id={file_ref}")
+        raise FileNotFoundError(f"no app_storage.local_files row for id={file_ref}")
     return bytes(row["file_data"])
 
 

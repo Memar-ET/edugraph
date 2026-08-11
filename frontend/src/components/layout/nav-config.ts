@@ -1,9 +1,15 @@
 import {
+  BarChart3,
   Briefcase,
   ClipboardList,
   FileStack,
+  GitBranch,
+  HelpCircle,
   LayoutDashboard,
   MessageCircleQuestion,
+  Network,
+  Settings,
+  ShieldAlert,
   UploadCloud,
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
@@ -14,38 +20,66 @@ export interface NavItem {
   label: string
   to: string
   icon: LucideIcon
+  badge?: string | number
+  section?: 'General' | 'Reports' | 'Settings'
 }
 
-/** Sidebar nav is role-scoped -- mirrors router.go's RequireRole gates, not
- * a generic "everything" menu. Each role only sees what it can act on. */
 export function getNavItems(role: Role | undefined): NavItem[] {
   switch (role) {
     case 'student':
       return [
-        { label: 'Dashboard', to: '/', icon: LayoutDashboard },
-        { label: 'My exams', to: '/student/exams', icon: ClipboardList },
-        { label: 'Ask the tutor', to: '/student/tutor', icon: MessageCircleQuestion },
+        { label: 'Dashboard', to: '/', icon: LayoutDashboard, section: 'General' },
+        { label: 'My Exams', to: '/student/exams', icon: ClipboardList, section: 'General', badge: '6' },
+        { label: 'Ask AI Tutor', to: '/student/tutor', icon: MessageCircleQuestion, section: 'General' },
+        { label: 'Career Paths', to: '/career/paths', icon: Briefcase, section: 'General' },
+        { label: 'Analytics', to: '/', icon: BarChart3, section: 'Reports' },
+        { label: 'Help & Support', to: '/', icon: HelpCircle, section: 'Settings' },
+        { label: 'Settings', to: '/', icon: Settings, section: 'Settings' },
       ]
     case 'teacher':
       return [
-        { label: 'Dashboard', to: '/', icon: LayoutDashboard },
-        { label: 'Exams', to: '/teacher/exams/upload', icon: UploadCloud },
+        { label: 'Dashboard', to: '/', icon: LayoutDashboard, section: 'General' },
+        { label: 'Exam Suite', to: '/teacher/exams/upload', icon: UploadCloud, section: 'General' },
+        { label: 'Class Analytics', to: '/', icon: BarChart3, section: 'Reports' },
+        { label: 'Help & Support', to: '/', icon: HelpCircle, section: 'Settings' },
+        { label: 'Settings', to: '/', icon: Settings, section: 'Settings' },
       ]
     case 'school_admin':
       return [
-        { label: 'Dashboard', to: '/', icon: LayoutDashboard },
-        { label: 'Exams', to: '/teacher/exams/upload', icon: UploadCloud },
+        { label: 'Dashboard', to: '/', icon: LayoutDashboard, section: 'General' },
+        { label: 'Exam Suite', to: '/teacher/exams/upload', icon: UploadCloud, section: 'General' },
+        { label: 'Quality Score', to: '/', icon: ShieldAlert, section: 'Reports' },
+        { label: 'Help & Support', to: '/', icon: HelpCircle, section: 'Settings' },
+        { label: 'Settings', to: '/', icon: Settings, section: 'Settings' },
       ]
     case 'regional_admin':
-      return [{ label: 'Dashboard', to: '/', icon: LayoutDashboard }]
+      return [
+        { label: 'Dashboard', to: '/', icon: LayoutDashboard, section: 'General' },
+        { label: 'Regional Analytics', to: '/', icon: BarChart3, section: 'Reports' },
+        { label: 'Help & Support', to: '/', icon: HelpCircle, section: 'Settings' },
+        { label: 'Settings', to: '/', icon: Settings, section: 'Settings' },
+      ]
     case 'ministry_admin':
       return [
-        { label: 'Dashboard', to: '/', icon: LayoutDashboard },
-        { label: 'Curriculum', to: '/curriculum/upload', icon: FileStack },
-        { label: 'Career paths', to: '/career/paths', icon: Briefcase },
+        { label: 'Dashboard', to: '/', icon: LayoutDashboard, section: 'General' },
+        { label: 'Curriculum Specification', to: '/curriculum/upload', icon: FileStack, section: 'General' },
+        { label: 'Prerequisites', to: '/curriculum/prerequisites', icon: Network, section: 'General' },
+        { label: 'Curriculum Versions', to: '/curriculum/versions', icon: GitBranch, section: 'General' },
+        { label: 'Career Paths', to: '/career/paths', icon: Briefcase, section: 'General' },
+        { label: 'National Reports', to: '/', icon: BarChart3, section: 'Reports' },
+        { label: 'Help & Support', to: '/', icon: HelpCircle, section: 'Settings' },
+        { label: 'Settings', to: '/', icon: Settings, section: 'Settings' },
       ]
     case 'curriculum_officer':
-      return [{ label: 'Upload curriculum', to: '/curriculum/upload', icon: FileStack }]
+      return [
+        { label: 'Dashboard', to: '/curriculum', icon: LayoutDashboard, section: 'General' },
+        { label: 'Upload Curriculum', to: '/curriculum/upload', icon: FileStack, section: 'General' },
+        { label: 'Prerequisites', to: '/curriculum/prerequisites', icon: Network, section: 'General' },
+        { label: 'Curriculum Versions', to: '/curriculum/versions', icon: GitBranch, section: 'General' },
+        { label: 'Parsing Analytics', to: '/', icon: BarChart3, section: 'Reports' },
+        { label: 'Help & Support', to: '/', icon: HelpCircle, section: 'Settings' },
+        { label: 'Settings', to: '/', icon: Settings, section: 'Settings' },
+      ]
     default:
       return []
   }

@@ -147,5 +147,31 @@ func (s *Service) Approve(ctx context.Context, userID, jobID uuid.UUID, edited *
 		return nil, apperrors.BadRequest("parsed structure has no units to promote")
 	}
 
-	return s.repo.ApproveAndPromote(ctx, jobID, userID, structure, finalJSON)
+	resp, result, err := s.repo.ApproveAndPromote(ctx, jobID, userID, structure, finalJSON)
+	if err != nil {
+		return nil, err
+	}
+
+	// Feature 1.1: queue an embedding job for every CLO/topic that was just
+	// promoted (or re-promoted) so the ai-service embed worker can generate
+	// and store its vector representation. Best-effort, same as the parse
+	// queue push above -- the approval itself has already committed, so a
+	// Redis hiccup here shouldn't fail the request.
+	for _, target := range result.EmbeddingTargets {
+		job := map[string]string{"kind": target.Kind}
+		if target.Kind == "topic" {
+			job["id"] = target.TopicID.String()
+		} else {
+			job["code"] = target.CloCode
+		}
+		payload, err := json.Marshal(job)
+		if err != nil {
+			continue
+		}
+		if err := s.redis.LPush(ctx, "queue:embedding:generate", payload).Err(); err != nil {
+			fmt.Printf("⚠️ Redis embedding queue push failed for %s: %v\n", target.Kind, err)
+		}
+	}
+
+	return resp, nil
 }

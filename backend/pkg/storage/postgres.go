@@ -28,7 +28,7 @@ func (s *PostgresStorage) Upload(ctx context.Context, fileName, mimeType string,
 
 	var id string
 	query := `
-		INSERT INTO storage.local_files (file_name, mime_type, file_data, size_bytes)
+		INSERT INTO app_storage.local_files (file_name, mime_type, file_data, size_bytes)
 		VALUES ($1, $2, $3, $4)
 		RETURNING id
 	`
@@ -42,7 +42,7 @@ func (s *PostgresStorage) Upload(ctx context.Context, fileName, mimeType string,
 
 func (s *PostgresStorage) Download(ctx context.Context, ref string) (io.ReadCloser, error) {
 	var data []byte
-	query := `SELECT file_data FROM storage.local_files WHERE id = $1`
+	query := `SELECT file_data FROM app_storage.local_files WHERE id = $1`
 	err := s.pool.QueryRow(ctx, query, ref).Scan(&data)
 	if err != nil {
 		return nil, fmt.Errorf("fetch local file: %w", err)

@@ -1,2 +1,6 @@
 export { UploadPage } from './UploadPage'
 export { JobReviewPage } from './JobReviewPage'
+export { CurriculumDashboardPage } from './CurriculumDashboardPage'
+export { PrerequisitesPage } from './PrerequisitesPage'
+export { CurriculumVersionsPage } from './CurriculumVersionsPage'
+export { CurriculumGraphPage } from './CurriculumGraphPage'

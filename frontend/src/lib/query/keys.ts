@@ -1,5 +1,11 @@
 export const queryKeys = {
   curriculumJob: (jobId: string) => ['curriculum', 'job', jobId] as const,
+  curriculumJobs: (page: number) => ['curriculum', 'jobs', page] as const,
+  curriculumTopics: (subjectCode: string) => ['curriculum', 'subjects', subjectCode, 'topics'] as const,
+  topicPrerequisites: (topicId: string) => ['curriculum', 'topics', topicId, 'prerequisites'] as const,
+  subjectVersions: (subjectCode: string) => ['curriculum', 'subjects', subjectCode, 'versions'] as const,
+  subjectGraph: (subjectCode: string, includeClos: boolean) =>
+    ['curriculum', 'subjects', subjectCode, 'graph', includeClos] as const,
   exam: (examId: string) => ['assessment', 'exam', examId] as const,
   examQuestions: (examId: string) => ['assessment', 'exam', examId, 'questions'] as const,
   gradingQuestions: (examId: string) => ['assessment', 'exam', examId, 'grading-questions'] as const,

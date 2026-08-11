@@ -1,5 +1,7 @@
 import { apiClient } from './client'
 import type {
+  AddPrerequisiteRequest,
+  AddPrerequisiteResponse,
   ApproveRequest,
   ApproveResponse,
   AuthResponse,
@@ -19,21 +21,28 @@ import type {
   GenerateStudyPlanRequest,
   GenerateStudyPlanResponse,
   GradingQuestion,
+  JobListItem,
   JobStatus,
   LoginRequest,
+  PaginationMeta,
   MinistryOverviewResponse,
   NotificationResponse,
+  PrerequisiteLink,
   PublishResponse,
   RegionResponse,
   RegionStatsResponse,
+  ResyncPrerequisitesResponse,
   SchoolQualityResponse,
   SchoolResponse,
   StudentResponse,
   StudyPlan,
+  SubjectGraph,
   SubjectProfile,
+  SubjectVersion,
   SubmitExamRequest,
   SubmitExamResponse,
   TeacherResponse,
+  TopicListItem,
   TutorAskRequest,
   TutorAskResponse,
   UploadAnswerKeyResponse,
@@ -72,6 +81,20 @@ export async function uploadCurriculum(payload: UploadCurriculumPayload): Promis
     headers: { 'Content-Type': 'multipart/form-data' },
   })
   return unwrap(res.data)
+}
+
+export interface JobListResponse {
+  items: JobListItem[]
+  meta: PaginationMeta
+}
+
+/** Backs the Curriculum Officer dashboard (feature 1.2): the caller's own upload/approval history. */
+export async function listCurriculumJobs(page = 1, limit = 20): Promise<JobListResponse> {
+  const res = await apiClient.get<Envelope<JobListItem[]>>('/curriculum/jobs', { params: { page, limit } })
+  if (!res.data.success || res.data.data === undefined) {
+    throw new Error(res.data.error || 'Request failed')
+  }
+  return { items: res.data.data, meta: res.data.meta as PaginationMeta }
 }
 
 export async function getCurriculumJob(jobId: string): Promise<JobStatus> {
@@ -320,5 +343,69 @@ export async function markNotificationRead(id: string): Promise<void> {
 
 export async function createNotification(payload: CreateNotificationRequest): Promise<NotificationResponse> {
   const res = await apiClient.post<Envelope<NotificationResponse>>('/notifications', payload)
+  return unwrap(res.data)
+}
+
+// ── Topic prerequisites ───────────────────────────────────────────
+
+export async function listTopicsBySubject(subjectCode: string): Promise<TopicListItem[]> {
+  const res = await apiClient.get<Envelope<TopicListItem[]>>(
+    `/curriculum/subjects/${encodeURIComponent(subjectCode)}/topics`,
+  )
+  return unwrap(res.data)
+}
+
+export async function listTopicPrerequisites(topicId: string): Promise<PrerequisiteLink[]> {
+  const res = await apiClient.get<Envelope<PrerequisiteLink[]>>(`/curriculum/topics/${topicId}/prerequisites`)
+  return unwrap(res.data)
+}
+
+export async function addTopicPrerequisite(
+  topicId: string,
+  payload: AddPrerequisiteRequest,
+): Promise<AddPrerequisiteResponse> {
+  const res = await apiClient.post<Envelope<AddPrerequisiteResponse>>(
+    `/curriculum/topics/${topicId}/prerequisites`,
+    payload,
+  )
+  return unwrap(res.data)
+}
+
+export async function validatePrerequisite(topicId: string, prereqId: string): Promise<AddPrerequisiteResponse> {
+  const res = await apiClient.patch<Envelope<AddPrerequisiteResponse>>(
+    `/curriculum/topics/${topicId}/prerequisites/${prereqId}/validate`,
+  )
+  return unwrap(res.data)
+}
+
+export async function resyncPrerequisites(): Promise<ResyncPrerequisitesResponse> {
+  const res = await apiClient.post<Envelope<ResyncPrerequisitesResponse>>('/curriculum/prerequisites/resync')
+  return unwrap(res.data)
+}
+
+// ── Curriculum versioning ─────────────────────────────────────────
+
+export async function getSubjectVersions(subjectCode: string): Promise<SubjectVersion[]> {
+  const res = await apiClient.get<Envelope<SubjectVersion[]>>(
+    `/curriculum/subjects/${encodeURIComponent(subjectCode)}/versions`,
+  )
+  return unwrap(res.data)
+}
+
+export async function supersedeSubject(newCode: string, previousCode: string): Promise<SubjectVersion> {
+  const res = await apiClient.post<Envelope<SubjectVersion>>(
+    `/curriculum/subjects/${encodeURIComponent(newCode)}/supersede`,
+    { previousCode },
+  )
+  return unwrap(res.data)
+}
+
+// ── Curriculum knowledge graph ────────────────────────────────────
+
+export async function getSubjectGraph(subjectCode: string, includeClos = false): Promise<SubjectGraph> {
+  const res = await apiClient.get<Envelope<SubjectGraph>>(
+    `/curriculum/subjects/${encodeURIComponent(subjectCode)}/graph`,
+    { params: { includeClos: includeClos ? 'true' : undefined } },
+  )
   return unwrap(res.data)
 }

@@ -31,7 +31,8 @@ func (s *Service) AddTopicPrerequisite(
 		weight = *req.Weight
 	}
 
-	link, err := s.repo.AddTopicPrerequisite(ctx, topicID, prereqID, weight, userID)
+	inferMethod := req.InferMethod
+	link, err := s.repo.AddTopicPrerequisite(ctx, topicID, prereqID, weight, inferMethod, userID)
 	if errors.Is(err, repository.ErrTopicNotFound) {
 		return nil, apperrors.NotFound("topic or prerequisite topic not found")
 	}
@@ -42,10 +43,66 @@ func (s *Service) AddTopicPrerequisite(
 		return nil, apperrors.Internal(err)
 	}
 
-	resp := &dto.AddPrerequisiteResponse{Link: *link, GraphSynced: true}
-	if err := s.repo.SyncPrerequisiteToNeo4j(ctx, topicID, prereqID, weight); err != nil {
+	return s.syncPrerequisiteAndRespond(ctx, *link), nil
+}
+
+// ValidatePrerequisite confirms an existing "ai_inferred" (or any other)
+// link -- the counterpart to AddTopicPrerequisite's inferMethod handling
+// (feature 1.4). Re-syncs the link's isValidated property into Neo4j
+// afterwards, same best-effort contract as creation.
+func (s *Service) ValidatePrerequisite(ctx context.Context, userID, topicID, prereqID uuid.UUID) (*dto.AddPrerequisiteResponse, error) {
+	link, err := s.repo.ValidatePrerequisite(ctx, topicID, prereqID, userID)
+	if errors.Is(err, repository.ErrPrerequisiteNotFound) {
+		return nil, apperrors.NotFound("prerequisite link not found")
+	}
+	if err != nil {
+		return nil, apperrors.Internal(err)
+	}
+
+	return s.syncPrerequisiteAndRespond(ctx, *link), nil
+}
+
+// syncPrerequisiteAndRespond mirrors a just-written link into Neo4j and
+// marks it synced on success -- shared by AddTopicPrerequisite and
+// ValidatePrerequisite so both report the same GraphSynced contract.
+func (s *Service) syncPrerequisiteAndRespond(ctx context.Context, link dto.PrerequisiteLink) *dto.AddPrerequisiteResponse {
+	topicID := uuid.MustParse(link.TopicID)
+	prereqID := uuid.MustParse(link.PrerequisiteTopicID)
+
+	resp := &dto.AddPrerequisiteResponse{Link: link, GraphSynced: true}
+	if err := s.repo.SyncPrerequisiteToNeo4j(ctx, topicID, prereqID, link.Weight, link.IsValidated, link.InferMethod); err != nil {
 		resp.GraphSynced = false
 		resp.GraphError = err.Error()
+		return resp
+	}
+	if err := s.repo.MarkPrerequisiteSynced(ctx, topicID, prereqID); err != nil {
+		resp.GraphSynced = false
+		resp.GraphError = err.Error()
+	}
+	return resp
+}
+
+// ResyncPrerequisitesToNeo4j re-mirrors every prerequisite link with
+// neo4j_written = false -- catches up links whose best-effort sync failed
+// at write time, or that predate the neo4j_written column (V026) entirely
+// (feature 1.5).
+func (s *Service) ResyncPrerequisitesToNeo4j(ctx context.Context) (*dto.ResyncPrerequisitesResponse, error) {
+	pending, err := s.repo.ListUnsyncedPrerequisites(ctx)
+	if err != nil {
+		return nil, apperrors.Internal(err)
+	}
+
+	resp := &dto.ResyncPrerequisitesResponse{}
+	for _, p := range pending {
+		if err := s.repo.SyncPrerequisiteToNeo4j(ctx, p.TopicID, p.PrereqID, p.Weight, p.IsValidated, p.InferMethod); err != nil {
+			resp.Failed++
+			continue
+		}
+		if err := s.repo.MarkPrerequisiteSynced(ctx, p.TopicID, p.PrereqID); err != nil {
+			resp.Failed++
+			continue
+		}
+		resp.Synced++
 	}
 	return resp, nil
 }
