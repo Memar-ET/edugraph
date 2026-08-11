@@ -1,5 +1,5 @@
 -- V011_updated_curriculum.sql
--- Replaces old flat curriculum tables with proper schema-based deep hierarchy
+-- Migrate to schema-based curriculum architecture
 -- BACKWARD COMPATIBLE: Keeps old tables, creates new schema-based tables
 -- NOTE: Old tables in public schema are preserved for gradual migration
 
@@ -346,3 +346,21 @@ CREATE TABLE students.study_plans (
 );
 
 CREATE INDEX idx_study_plans_student_id ON students.study_plans(student_id);
+
+-- =====================================================
+-- DEPRECATION NOTICE
+-- =====================================================
+-- The following old tables in the 'public' schema are retained
+-- for backward compatibility but are DEPRECATED:
+--
+--   - public.career_matches → use careers.career_matches instead
+--   - public.assessment_results → use assessment schema instead
+--   - public.assessment_questions → use assessment.questions instead
+--   - public.assessments → use assessment.exams instead
+--   - public.career_paths → use careers.careers instead
+--   - public.curriculum_units → use curriculum.units instead
+--   - public.subjects → use curriculum.subjects instead
+--
+-- All new code should use the new schema-based tables.
+-- Old tables will be removed in a future migration after
+-- all clients have migrated to the new schema structure.
