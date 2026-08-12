@@ -2,17 +2,17 @@
 -- Replaces old flat curriculum tables with proper schema-based deep hierarchy
 
 -- =====================================================
--- STEP 1: Drop old incorrect tables (in correct order)
+-- STEP 1: Archive old incorrect tables (backward-compatible)
 -- =====================================================
 
--- Drop dependent tables first
-DROP TABLE IF EXISTS career_matches CASCADE;
-DROP TABLE IF EXISTS assessment_results CASCADE;
-DROP TABLE IF EXISTS assessment_questions CASCADE;
-DROP TABLE IF EXISTS assessments CASCADE;
-DROP TABLE IF EXISTS career_paths CASCADE;
-DROP TABLE IF EXISTS curriculum_units CASCADE;
-DROP TABLE IF EXISTS subjects CASCADE;
+-- Rename old tables to archive schema instead of dropping
+ALTER TABLE IF EXISTS career_matches RENAME TO career_matches_v010;
+ALTER TABLE IF EXISTS assessment_results RENAME TO assessment_results_v010;
+ALTER TABLE IF EXISTS assessment_questions RENAME TO assessment_questions_v010;
+ALTER TABLE IF EXISTS assessments RENAME TO assessments_v010;
+ALTER TABLE IF EXISTS career_paths RENAME TO career_paths_v010;
+ALTER TABLE IF EXISTS curriculum_units RENAME TO curriculum_units_v010;
+ALTER TABLE IF EXISTS subjects RENAME TO subjects_v010;
 
 -- =====================================================
 -- STEP 2: Create curriculum schema
