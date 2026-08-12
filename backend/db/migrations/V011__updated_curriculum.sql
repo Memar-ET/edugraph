@@ -1,5 +1,7 @@
 -- V011_updated_curriculum.sql
--- Replaces old flat curriculum tables with proper schema-based deep hierarchy
+-- Migrate to schema-based curriculum architecture
+-- BACKWARD COMPATIBLE: Keeps old tables, creates new schema-based tables
+-- NOTE: Old tables in public schema are preserved for gradual migration
 
 -- =====================================================
 -- STEP 1: Archive old incorrect tables (backward-compatible)
@@ -40,7 +42,7 @@ CREATE TABLE curriculum.upload_jobs (
     updated_at      TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
--- Subjects: top-level container
+-- Subjects: top-level container (new schema-based version)
 CREATE TABLE curriculum.subjects (
     code            TEXT PRIMARY KEY,
     name_en         TEXT NOT NULL,
@@ -53,7 +55,7 @@ CREATE TABLE curriculum.subjects (
     created_at      TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
--- Units: chapters inside subjects
+-- Units: chapters inside subjects (new schema-based version)
 CREATE TABLE curriculum.units (
     id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     subject_code    TEXT NOT NULL REFERENCES curriculum.subjects(code) ON DELETE CASCADE,
@@ -129,12 +131,12 @@ CREATE TABLE curriculum.topic_clo_mappings (
 );
 
 -- =====================================================
--- STEP 3: Create assessment schema
+-- STEP 2: Create assessment schema
 -- =====================================================
 
 CREATE SCHEMA IF NOT EXISTS assessment;
 
--- Exams
+-- Exams (new schema-based version)
 CREATE TABLE assessment.exams (
     id                   UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     created_by           UUID NOT NULL REFERENCES users(id),
@@ -159,7 +161,7 @@ CREATE TABLE assessment.exams (
 CREATE INDEX idx_assessments_school_id ON assessment.exams(school_id);
 CREATE INDEX idx_assessments_subject_id ON assessment.exams(subject_code, grade_level);
 
--- Questions
+-- Questions (new schema-based version)
 CREATE TABLE assessment.questions (
     id                UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     exam_id           UUID NOT NULL REFERENCES assessment.exams(id) ON DELETE CASCADE,
@@ -231,7 +233,7 @@ CREATE INDEX idx_answers_school_id_passed ON assessment.student_answers(school_i
 CREATE INDEX idx_answers_neo4j ON assessment.student_answers(neo4j_written) WHERE NOT neo4j_written;
 
 -- =====================================================
--- STEP 4: Create careers schema
+-- STEP 3: Create careers schema
 -- =====================================================
 
 CREATE SCHEMA IF NOT EXISTS careers;
@@ -258,7 +260,7 @@ CREATE TABLE careers.career_topic_requirements (
     UNIQUE (career_id, topic_id)
 );
 
--- Career Matches (student recommendations)
+-- Career Matches (student recommendations) - new schema-based version
 CREATE TABLE careers.career_matches (
     id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     student_id      UUID NOT NULL REFERENCES students(id) ON DELETE CASCADE,
@@ -271,16 +273,16 @@ CREATE TABLE careers.career_matches (
 CREATE INDEX idx_career_matches_student_id ON careers.career_matches(student_id);
 
 -- =====================================================
--- STEP 5: Create embeddings schema (pgvector)
+-- STEP 4: Create embeddings schema (pgvector)
 -- =====================================================
 
 CREATE SCHEMA IF NOT EXISTS embeddings;
 
--- CLO Embeddings (FIXED: 768 dimensions, not 1024!)
+-- CLO Embeddings (768 dimensions for multilingual-e5-large)
 CREATE TABLE embeddings.clo_embeddings (
     id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     clo_code    TEXT UNIQUE NOT NULL REFERENCES curriculum.clos(code) ON DELETE CASCADE,
-    embedding   vector(768) NOT NULL,  -- ← CRITICAL FIX: multilingual-e5-large outputs 768
+    embedding   vector(768) NOT NULL,
     model_ver   TEXT NOT NULL,
     created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
 );
@@ -289,7 +291,7 @@ CREATE TABLE embeddings.clo_embeddings (
 CREATE TABLE embeddings.question_embeddings (
     id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     question_id UUID UNIQUE NOT NULL REFERENCES assessment.questions(id) ON DELETE CASCADE,
-    embedding   vector(768) NOT NULL,  -- ← CRITICAL FIX
+    embedding   vector(768) NOT NULL,
     model_ver   TEXT NOT NULL,
     created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
 );
@@ -301,7 +303,7 @@ CREATE INDEX idx_q_emb_hnsw ON embeddings.question_embeddings
     USING hnsw (embedding vector_cosine_ops);
 
 -- =====================================================
--- STEP 6: Create students schema additions
+-- STEP 5: Create students schema additions
 -- =====================================================
 
 CREATE SCHEMA IF NOT EXISTS students;
@@ -357,3 +359,21 @@ CREATE TABLE students.study_plans (
 );
 
 CREATE INDEX idx_study_plans_student_id ON students.study_plans(student_id);
+
+-- =====================================================
+-- DEPRECATION NOTICE
+-- =====================================================
+-- The following old tables in the 'public' schema are retained
+-- for backward compatibility but are DEPRECATED:
+--
+--   - public.career_matches → use careers.career_matches instead
+--   - public.assessment_results → use assessment schema instead
+--   - public.assessment_questions → use assessment.questions instead
+--   - public.assessments → use assessment.exams instead
+--   - public.career_paths → use careers.careers instead
+--   - public.curriculum_units → use curriculum.units instead
+--   - public.subjects → use curriculum.subjects instead
+--
+-- All new code should use the new schema-based tables.
+-- Old tables will be removed in a future migration after
+-- all clients have migrated to the new schema structure.
