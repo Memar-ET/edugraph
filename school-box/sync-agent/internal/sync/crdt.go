@@ -32,7 +32,7 @@ type entitySpec struct {
 // entity_type/columns arrive over the wire — the cloud's /sync/pull has no
 // per-device auth today (a known gap, see the PRD review), so this is the
 // boundary that keeps a compromised or buggy pull response from writing to
-// an arbitrary table. Keep in sync with V026__sync_outbox.sql's triggers.
+// an arbitrary table. Keep in sync with V029__sync_outbox.sql's triggers.
 var entityAllowlist = map[string]entitySpec{
 	"assessment.exams":           {mode: modeLastWriteWins},
 	"assessment.questions":       {mode: modeLastWriteWins},
@@ -175,7 +175,7 @@ func (a *Applier) logConflict(ctx context.Context, change PulledChange) error {
 // buildUpsert turns a JSON row snapshot back into an INSERT .. ON CONFLICT
 // statement. Column names come from the payload's own keys, which
 // originated from to_jsonb() of the same allowlisted table on the sending
-// side (see V026's trigger) — not from unvalidated request input.
+// side (see V029's trigger) — not from unvalidated request input.
 func buildUpsert(table string, payload map[string]any, overwriteOnConflict bool) (string, []any, error) {
 	if _, ok := payload["id"]; !ok {
 		return "", nil, fmt.Errorf("payload for %s is missing its id column", table)

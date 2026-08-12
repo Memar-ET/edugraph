@@ -15,7 +15,6 @@ import (
 
 	"github.com/edugraph-ai/edugraph/internal/curriculum/dto"
 	"github.com/edugraph-ai/edugraph/internal/curriculum/repository"
-	"github.com/edugraph-ai/edugraph/pkg/ai"
 	apperrors "github.com/edugraph-ai/edugraph/pkg/errors"
 	"github.com/edugraph-ai/edugraph/pkg/storage"
 )
@@ -24,11 +23,10 @@ type Service struct {
 	repo    *repository.Repository
 	storage storage.StorageProvider
 	redis   *redis.Client
-	ai      *ai.Client
 }
 
-func New(repo *repository.Repository, storage storage.StorageProvider, redis *redis.Client, ai *ai.Client) *Service {
-	return &Service{repo: repo, storage: storage, redis: redis, ai: ai}
+func New(repo *repository.Repository, storage storage.StorageProvider, redis *redis.Client) *Service {
+	return &Service{repo: repo, storage: storage, redis: redis}
 }
 
 // Upload handles the entire ingestion workflow:
@@ -149,68 +147,31 @@ func (s *Service) Approve(ctx context.Context, userID, jobID uuid.UUID, edited *
 		return nil, apperrors.BadRequest("parsed structure has no units to promote")
 	}
 
-	resp, err := s.repo.ApproveAndPromote(ctx, jobID, userID, structure, finalJSON)
+	resp, result, err := s.repo.ApproveAndPromote(ctx, jobID, userID, structure, finalJSON)
 	if err != nil {
-		return resp, err
+		return nil, err
 	}
 
-	// Capability 2A/2.1 groundwork: generate a vector embedding for every
-	// CLO just promoted so exam parsing can semantically match question
-	// stems against them (see exam_parser/vector_matcher.py). Best-effort
-	// and outside any transaction, same philosophy as the Neo4j graph sync
-	// just above -- the relational promotion already succeeded and remains
-	// the source of truth; a rare embedding-service outage shouldn't make
-	// curriculum approval itself fail. If this fails, CLO matching for
-	// this subject falls back to the keyword/LLM matcher until it's
-	// retried (re-approving the same job is idempotent and will retry it).
-	s.syncCLOEmbeddings(ctx, structure)
+	// Feature 1.1: queue an embedding job for every CLO/topic that was just
+	// promoted (or re-promoted) so the ai-service embed worker can generate
+	// and store its vector representation. Best-effort, same as the parse
+	// queue push above -- the approval itself has already committed, so a
+	// Redis hiccup here shouldn't fail the request.
+	for _, target := range result.EmbeddingTargets {
+		job := map[string]string{"kind": target.Kind}
+		if target.Kind == "topic" {
+			job["id"] = target.TopicID.String()
+		} else {
+			job["code"] = target.CloCode
+		}
+		payload, err := json.Marshal(job)
+		if err != nil {
+			continue
+		}
+		if err := s.redis.LPush(ctx, "queue:embedding:generate", payload).Err(); err != nil {
+			fmt.Printf("⚠️ Redis embedding queue push failed for %s: %v\n", target.Kind, err)
+		}
+	}
 
 	return resp, nil
-}
-
-// syncCLOEmbeddings collects every CLO code+description in the
-// just-approved structure, embeds them in one batch call to the ai-service
-// (POST /api/v1/embeddings/passages), and upserts the results into
-// embeddings.clo_embeddings. Logs and swallows errors rather than
-// propagating them -- see the comment at the call site in Approve().
-func (s *Service) syncCLOEmbeddings(ctx context.Context, structure dto.ParsedStructurePayload) {
-	type cloRef struct {
-		code string
-		desc string
-	}
-	var clos []cloRef
-	for _, u := range structure.Units {
-		for _, t := range u.Topics {
-			for _, c := range t.Clos {
-				if c.Code == "" || c.Description == "" {
-					continue
-				}
-				clos = append(clos, cloRef{code: c.Code, desc: c.Description})
-			}
-		}
-	}
-	if len(clos) == 0 {
-		return
-	}
-
-	texts := make([]string, len(clos))
-	for i, c := range clos {
-		texts[i] = c.desc
-	}
-
-	result, err := s.ai.EmbedPassages(ctx, texts)
-	if err != nil {
-		fmt.Printf("⚠️ CLO embedding generation failed (%d CLOs, ai-service unreachable?): %v\n", len(clos), err)
-		return
-	}
-	if len(result.Embeddings) != len(clos) {
-		fmt.Printf("⚠️ CLO embedding count mismatch: sent %d texts, got %d embeddings back\n", len(clos), len(result.Embeddings))
-		return
-	}
-
-	for i, c := range clos {
-		if err := s.repo.UpsertCLOEmbedding(ctx, c.code, result.Embeddings[i], result.Model); err != nil {
-			fmt.Printf("⚠️ failed to store embedding for CLO %q: %v\n", c.code, err)
-		}
-	}
 }

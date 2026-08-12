@@ -161,7 +161,7 @@ func main() {
 
 	// 2. Initialize Curriculum Domain
 	curriculumRepo := curriculumrepo.New(pgPool, neo4jDriver)
-	curriculumService := curriculumsvc.New(curriculumRepo, storageProvider, redisClient, aiClient)
+	curriculumService := curriculumsvc.New(curriculumRepo, storageProvider, redisClient)
 	curriculumHandler := curriculumhandler.New(curriculumService)
 
 	// ... pass curriculumHandler to router ...

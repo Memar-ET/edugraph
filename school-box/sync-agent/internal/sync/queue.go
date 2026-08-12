@@ -1,5 +1,5 @@
 // Package sync implements the School Box side of offline-first sync: draining
-// the local sync.outbox (see backend/db/migrations/V026__sync_outbox.sql)
+// the local sync.outbox (see backend/db/migrations/V029__sync_outbox.sql)
 // to the cloud, and applying changes pulled back down.
 package sync
 

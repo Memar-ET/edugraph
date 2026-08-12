@@ -83,6 +83,10 @@ export interface ParsedTopic {
   learningOutcomes: string[]
   clos: ParsedClo[]
   rawText?: string
+  /** A subtopic is itself a ParsedTopic, promoted as its own topics row (see migration V027's parent_topic_id). */
+  subtopics?: ParsedTopic[]
+  /** Opaque source-document ID (e.g. "G9.U2.T2.2"), review context only -- never promoted into Postgres. */
+  externalCode?: string
 }
 
 export interface ParsedUnit {
@@ -93,6 +97,8 @@ export interface ParsedUnit {
    * indicativeCloCount, ...) that don't map to a curriculum.units column --
    * review context only, not promoted into Postgres. */
   metadata?: Record<string, string>
+  /** CLOs stated at unit level rather than tied to one topic -- mapped to every topic/subtopic in the unit at approval time. */
+  unitClos?: ParsedClo[]
 }
 
 export interface ParsedStructurePayload {
@@ -125,6 +131,122 @@ export interface ApproveResponse {
   closPromoted: number
   graphSynced: boolean
   graphSyncError?: string
+}
+
+/** One row of GET /curriculum/jobs -- the Curriculum Officer dashboard's job history. */
+export interface JobListItem {
+  jobId: string
+  status: JobStatusValue
+  fileName: string
+  subjectCode: string
+  gradeLevel: number
+  academicYear: string
+  createdAt: string
+  approvedAt?: string
+}
+
+/** One row of GET /curriculum/subjects -- the Ministry curriculum browser (every promoted subject, not just one uploader's). */
+export interface SubjectListItem {
+  code: string
+  nameEn: string
+  nameAm?: string
+  gradeLevel: number
+  academicYear: string
+  moeCode?: string
+  isMandatory: boolean
+  version: number
+  isCurrent: boolean
+  previousVersionCode?: string
+  fileName?: string
+  uploadedByName?: string
+  approvedAt?: string
+  createdAt: string
+  unitCount: number
+  topicCount: number
+  subtopicCount: number
+  cloCount: number
+}
+
+// ── Topic prerequisites (backend/internal/curriculum/dto/{prerequisites,topic_list}.go) ──
+
+/** One row of GET /curriculum/subjects/{code}/topics -- backs the prerequisites UI's topic picker. */
+export interface TopicListItem {
+  id: string
+  titleEn: string
+  unitNumber: number
+  sequenceOrder: number
+  parentTopicId?: string
+}
+
+export type PrerequisiteInferMethod = 'explicit' | 'ai_inferred' | 'manual' | 'moe_document'
+
+export interface PrerequisiteLink {
+  topicId: string
+  topicTitle: string
+  prerequisiteTopicId: string
+  prerequisiteTitle: string
+  prerequisiteGrade: number
+  weight: number
+  isCrossGrade: boolean
+  inferMethod: PrerequisiteInferMethod
+  isValidated: boolean
+}
+
+export interface AddPrerequisiteRequest {
+  prerequisiteTopicId: string
+  weight?: number
+  inferMethod?: PrerequisiteInferMethod
+}
+
+export interface AddPrerequisiteResponse {
+  link: PrerequisiteLink
+  graphSynced: boolean
+  graphError?: string
+}
+
+export interface ResyncPrerequisitesResponse {
+  synced: number
+  failed: number
+}
+
+// ── Curriculum versioning (backend/internal/curriculum/dto/versions.go) ──
+
+export interface SubjectVersion {
+  code: string
+  version: number
+  isCurrent: boolean
+  academicYear: string
+  previousVersionCode?: string
+  supersededAt?: string
+  createdAt: string
+}
+
+// ── Curriculum knowledge graph (backend/internal/curriculum/dto/graph.go) ──
+
+export type GraphNodeType = 'subject' | 'unit' | 'topic' | 'clo'
+
+export interface GraphNode {
+  id: string
+  label: string
+  type: GraphNodeType
+  gradeLevel?: number
+  isSubtopic?: boolean
+  subjectCode?: string
+  /** Belongs to a different subject than the one requested -- the other end of a cross-grade prerequisite edge. */
+  external?: boolean
+}
+
+export type GraphEdgeType = 'HAS_UNIT' | 'HAS_TOPIC' | 'HAS_SUBTOPIC' | 'HAS_CLO' | 'HAS_PREREQUISITE'
+
+export interface GraphEdge {
+  source: string
+  target: string
+  type: GraphEdgeType
+}
+
+export interface SubjectGraph {
+  nodes: GraphNode[]
+  edges: GraphEdge[]
 }
 
 // ── Assessment (backend/internal/assessment/dto) ────────────────

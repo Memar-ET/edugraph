@@ -8,29 +8,36 @@ codebase's AI features (gap analysis, study plans, tutor, LLM-assisted CLO
 matching in clo_matcher_llm.py), which all call the Gemini cloud API and
 therefore stop working offline. This module is deliberately the one
 AI-dependent path in the codebase that keeps working with zero internet
-access, once the model weights are cached locally (see _MODEL_CACHE_DIR
-below).
+access, once the model weights are cached locally.
 
 Model: settings.EMBEDDING_MODEL (default "intfloat/multilingual-e5-large",
-1024-dim -- see db/migrations/V025__fix_embedding_dimension.sql for why
-1024 and not the 768 originally in V011). Chosen for being genuinely
-multilingual (curriculum content and student answers may be in English or
-Amharic) rather than English-only, which ruled out fastembed's BAAI/bge-*
-models for this use case.
+1024-dim -- see db/migrations/V028__fix_topic_embedding_dimension.sql for
+why 1024 and not the 768 originally assumed in V011/V025). Chosen for
+being genuinely multilingual (curriculum content and student answers may
+be in English or Amharic) rather than English-only, which ruled out
+fastembed's BAAI/bge-* models for this use case.
 
 e5-family models expect a "query: " or "passage: " prefix on every input
 string -- this is a real accuracy requirement of the model, not a style
-choice (see the model card). We treat CLO descriptions as the corpus being
-searched ("passage") and exam question stems as what's searching it
-("query"), which is the standard asymmetric-retrieval framing and the one
-these models were tuned for.
+choice (see the model card). We treat CLO/topic descriptions as the
+corpus being searched ("passage") and exam question stems as what's
+searching it ("query"), which is the standard asymmetric-retrieval
+framing and the one these models were tuned for.
+
+EmbeddingProvider below mirrors the StorageProvider adapter pattern used
+for Postgres/S3 dev storage (backend/pkg/storage/interface.go) -- every
+caller (app/workers/embed_worker.py) depends only on this interface, so a
+future model swap is a one-file change here, not a rewrite of the worker
+or the DB layer. FastEmbedProvider is the real (non-stub) implementation,
+wrapping the module-level embed_passages() below so there's exactly one
+place that knows how to talk to the model.
 """
 
 from __future__ import annotations
 
 import time
+from abc import ABC, abstractmethod
 from functools import lru_cache
-from typing import Optional
 
 import structlog
 
@@ -65,8 +72,9 @@ def _get_model():
 
 
 def embed_passages(texts: list[str]) -> list[list[float]]:
-    """Embed a batch of "documents to be searched" -- CLO descriptions in
-    this codebase. Order-preserving: result[i] corresponds to texts[i]."""
+    """Embed a batch of "documents to be searched" -- CLO/topic
+    descriptions in this codebase. Order-preserving: result[i]
+    corresponds to texts[i]."""
     if not texts:
         return []
     model = _get_model()
@@ -102,3 +110,39 @@ def is_available() -> bool:
     except Exception:  # noqa: BLE001 -- any load failure means "unavailable"
         logger.exception("embeddings.model_unavailable")
         return False
+
+
+class EmbeddingProvider(ABC):
+    model_version: str
+
+    @abstractmethod
+    async def embed(self, text: str) -> list[float]:
+        """Return a vector for `text`, at whatever width the configured
+        model produces (see embeddings.*_embeddings' vector(1024))."""
+
+
+class FastEmbedProvider(EmbeddingProvider):
+    """The real provider: wraps embed_passages() above. fastembed's
+    model.embed() is synchronous/CPU-bound, so it's run in a thread rather
+    than called inline -- embed_worker.py shares its asyncio event loop
+    with every other in-process worker (gap_worker, curriculum_worker,
+    ...), and blocking that loop for the duration of an embed call would
+    stall all of them, not just this one job."""
+
+    model_version = model_name()
+
+    async def embed(self, text: str) -> list[float]:
+        import asyncio
+
+        result = await asyncio.to_thread(embed_passages, [text])
+        return result[0]
+
+
+_provider: EmbeddingProvider | None = None
+
+
+def get_embedding_provider() -> EmbeddingProvider:
+    global _provider
+    if _provider is None:
+        _provider = FastEmbedProvider()
+    return _provider

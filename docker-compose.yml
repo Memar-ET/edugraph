@@ -21,19 +21,23 @@ services:
     environment:
       APP_ENV: ${APP_ENV}
 
+      # Postgres now lives on Supabase (session pooler), not the local
+      # `postgres` container below -- see .env / CLAUDE.md. No depends_on
+      # entry for it: it's a remote service Docker can't health-check or
+      # start, and connection failures surface at request time same as any
+      # other external dependency.
       POSTGRES_HOST: ${POSTGRES_HOST}
       POSTGRES_PORT: ${POSTGRES_PORT}
       POSTGRES_DB: ${POSTGRES_DB}
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_SSLMODE: ${POSTGRES_SSLMODE}
 
       NEO4J_URI: ${NEO4J_URI}
       REDIS_URL: ${REDIS_URL}
       AI_SERVICE_URL: ${AI_SERVICE_URL}
 
     depends_on:
-      postgres:
-        condition: service_healthy
       neo4j:
         condition: service_healthy
       redis:
@@ -62,14 +66,15 @@ services:
       NEO4J_URI: ${NEO4J_URI}
       REDIS_URL: ${REDIS_URL}
       POSTGRES_HOST: ${POSTGRES_HOST}
+      POSTGRES_PORT: ${POSTGRES_PORT}
+      POSTGRES_DB: ${POSTGRES_DB}
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_SSLMODE: ${POSTGRES_SSLMODE}
       EMBEDDING_MODEL: ${EMBEDDING_MODEL}
       GEMINI_API_KEY: ${GEMINI_API_KEY}
 
     depends_on:
-      postgres:
-        condition: service_healthy
       neo4j:
         condition: service_healthy
       redis:
@@ -104,25 +109,30 @@ services:
 
 
   # ─────────────────────────────
-  # PostgreSQL + pgvector
+  # PostgreSQL + pgvector -- LOCAL FALLBACK ONLY, not started by default.
+  # Postgres normally lives on Supabase now (see .env). Opt in with
+  # `docker compose --profile local-db up -d postgres flyway` if you need
+  # to develop against a plain local Postgres instead (e.g. offline), and
+  # point POSTGRES_HOST=postgres / POSTGRES_SSLMODE=disable in .env to use it.
   # ─────────────────────────────
   postgres:
     image: pgvector/pgvector:pg16
+    profiles: ["local-db"]
 
     ports:
       - "${POSTGRES_PORT}:5432"
 
     environment:
-      POSTGRES_DB: ${POSTGRES_DB}
-      POSTGRES_USER: ${POSTGRES_USER}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: edugraph
+      POSTGRES_USER: edugraph
+      POSTGRES_PASSWORD: postgres
 
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      
+
 
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      test: ["CMD-SHELL", "pg_isready -U edugraph -d edugraph"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -131,6 +141,7 @@ services:
 
   flyway:
     image: flyway/flyway:10
+    profiles: ["local-db"]
 
     depends_on:
       postgres:
@@ -141,8 +152,8 @@ services:
 
     environment:
       FLYWAY_URL: jdbc:postgresql://postgres:5432/edugraph
-      FLYWAY_USER: ${POSTGRES_USER}
-      FLYWAY_PASSWORD: ${POSTGRES_PASSWORD}
+      FLYWAY_USER: edugraph
+      FLYWAY_PASSWORD: postgres
       FLYWAY_LOCATIONS: filesystem:/flyway/sql
 
     command: migrate

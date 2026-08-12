@@ -128,11 +128,22 @@ export function JobReviewPage() {
     setApproving(true)
     setApproveError(null)
     try {
-      const normalized: ParsedUnit[] = units.map((u, i) => ({
-        ...u,
-        number: i + 1,
-        topics: u.topics.map((t, j) => ({ ...t, sequenceOrder: j + 1 })),
-      }))
+      const normalized: ParsedUnit[] = units.map((u, i) => {
+        // sequenceOrder must stay unique per unit across topics AND their
+        // subtopics (curriculum.topics has one UNIQUE(unit_id,
+        // sequence_order) covering both -- subtopics are their own topics
+        // rows, see migration V027). Renumbering only top-level topics
+        // here would leave a subtopic's original number unchanged, which
+        // can collide with a *different* topic's renumbered value the
+        // moment an officer removes a topic before approving.
+        let seq = 0
+        const topics = u.topics.map((t) => ({
+          ...t,
+          sequenceOrder: ++seq,
+          subtopics: t.subtopics?.map((s) => ({ ...s, sequenceOrder: ++seq })),
+        }))
+        return { ...u, number: i + 1, topics }
+      })
       const result = await approveCurriculumJob(jobId, dirty ? { parsedStructure: { units: normalized } } : {})
       setApproveResult(result)
     } catch (err) {
@@ -168,9 +179,22 @@ export function JobReviewPage() {
               <CardContent className="space-y-3">
                 <StatusBanner status={job.status} error={job.error} />
 
-                <Button variant="secondary" size="sm" onClick={() => void handleViewFile()}>
-                  View original file
-                </Button>
+                <div className="flex flex-wrap gap-2">
+                  <Button variant="secondary" size="sm" onClick={() => void handleViewFile()}>
+                    View original file
+                  </Button>
+                  {job.status === 'approved' && (
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      onClick={() =>
+                        void navigate({ to: '/curriculum/subjects/$code/graph', params: { code: job.subjectCode } })
+                      }
+                    >
+                      View knowledge graph
+                    </Button>
+                  )}
+                </div>
               </CardContent>
             </Card>
 
@@ -216,6 +240,24 @@ export function JobReviewPage() {
                               <span className="font-medium text-gray-500">{key}:</span> {value}
                             </div>
                           ))}
+                        </div>
+                      )}
+                      {unit.unitClos && unit.unitClos.length > 0 && (
+                        <div className="mx-6 mb-2">
+                          <p className="mb-1 text-xs font-medium text-gray-500">
+                            Unit CLOs (mapped to every topic in this unit on approval)
+                          </p>
+                          <div className="flex flex-wrap gap-1">
+                            {unit.unitClos.map((clo) => (
+                              <span
+                                key={clo.code}
+                                className="rounded bg-primary-50 px-2 py-0.5 text-xs text-primary-700"
+                                title={clo.description}
+                              >
+                                {clo.code}
+                              </span>
+                            ))}
+                          </div>
                         </div>
                       )}
                       <CardContent className="space-y-4">
@@ -280,6 +322,32 @@ export function JobReviewPage() {
                                   >
                                     {clo.code}
                                   </span>
+                                ))}
+                              </div>
+                            )}
+
+                            {topic.subtopics && topic.subtopics.length > 0 && (
+                              <div className="mt-2 space-y-1.5 border-l-2 border-gray-100 pl-3">
+                                <p className="text-xs font-medium text-gray-500">
+                                  Subtopics ({topic.subtopics.length})
+                                </p>
+                                {topic.subtopics.map((sub, subIdx) => (
+                                  <div key={subIdx} className="text-sm">
+                                    <span className="text-gray-700">{sub.titleEn}</span>
+                                    {sub.clos.length > 0 && (
+                                      <div className="mt-0.5 flex flex-wrap gap-1">
+                                        {sub.clos.map((clo) => (
+                                          <span
+                                            key={clo.code}
+                                            className="rounded bg-gray-100 px-1.5 py-0.5 text-[11px] text-gray-500"
+                                            title={clo.description}
+                                          >
+                                            {clo.code}
+                                          </span>
+                                        ))}
+                                      </div>
+                                    )}
+                                  </div>
                                 ))}
                               </div>
                             )}

@@ -139,9 +139,43 @@ type promotedUnit struct {
 
 type promotedTopic struct {
 	id            uuid.UUID
+	parentID      *uuid.UUID // set for a promoted subtopic, nil for a top-level topic
+	externalCode  string     // caller-supplied dto.ParsedTopic.ExternalCode, "" if unset
 	sequenceOrder int
 	titleEn       string
 	keyConcepts   []string
+	clos          []promotedCLO // this topic's own CLOs plus every unit-level CLO (mapped to every topic in the unit)
+	subtopics     []promotedTopic
+}
+
+type promotedCLO struct {
+	code        string
+	description string
+}
+
+// PromotionResult carries the parts of an ApproveAndPromote call a caller
+// might need beyond the HTTP-facing dto.ApproveResponse: the embedding
+// jobs to queue (feature 1.1), and -- for callers that supplied
+// dto.ParsedTopic.ExternalCode, e.g. a bulk source-document importer --
+// a way to resolve those external codes back to the generated topic
+// UUIDs (e.g. to bulk-insert prerequisite edges keyed on the source
+// document's own topic IDs). Topics promoted without an ExternalCode
+// (the normal AI-parsed upload flow) simply aren't in the map.
+type PromotionResult struct {
+	EmbeddingTargets []EmbeddingTarget
+	TopicIDByCode    map[string]uuid.UUID
+}
+
+// EmbeddingTarget identifies one CLO or topic that was just promoted (or
+// re-promoted) and needs a vector embedding generated/refreshed -- see
+// ApproveAndPromote and Service.Approve, which turns these into
+// queue:embedding:generate jobs for the ai-service embed worker (feature
+// 1.1). Only Kind is exported; only one of TopicID/CloCode is set,
+// matching Kind.
+type EmbeddingTarget struct {
+	Kind    string // "topic" or "clo"
+	TopicID uuid.UUID
+	CloCode string
 }
 
 // ApproveAndPromote is the core of Step 3/4: it locks the job row, verifies
@@ -168,10 +202,10 @@ func (r *Repository) ApproveAndPromote(
 	userID uuid.UUID,
 	structure dto.ParsedStructurePayload,
 	finalStructureJSON []byte,
-) (*dto.ApproveResponse, error) {
+) (*dto.ApproveResponse, *PromotionResult, error) {
 	tx, err := r.pool.Begin(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("begin tx: %w", err)
+		return nil, nil, fmt.Errorf("begin tx: %w", err)
 	}
 	defer func() { _ = tx.Rollback(ctx) }() // no-op once committed
 
@@ -181,12 +215,12 @@ func (r *Repository) ApproveAndPromote(
 	core, err := r.getJobCore(ctx, tx, jobID, true)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			return nil, apperrors.NotFound("job not found")
+			return nil, nil, apperrors.NotFound("job not found")
 		}
-		return nil, fmt.Errorf("lock job: %w", err)
+		return nil, nil, fmt.Errorf("lock job: %w", err)
 	}
 	if core.Status != "parsed" && core.Status != "review" {
-		return nil, apperrors.Conflict(fmt.Sprintf(
+		return nil, nil, apperrors.Conflict(fmt.Sprintf(
 			"job status is %q; only jobs with status 'parsed' or 'review' can be approved", core.Status,
 		))
 	}
@@ -204,12 +238,14 @@ func (r *Repository) ApproveAndPromote(
 			upload_job_id = EXCLUDED.upload_job_id
 	`, subjectCode, gradeLevel, academicYear, jobID)
 	if err != nil {
-		return nil, fmt.Errorf("upsert subject %q: %w", subjectCode, err)
+		return nil, nil, fmt.Errorf("upsert subject %q: %w", subjectCode, err)
 	}
 
 	var topicsPromoted, closPromoted int
 	promotedUnits := make([]promotedUnit, 0, len(structure.Units))
 	moeVersion := fmt.Sprintf("ai-draft-%s", academicYear)
+	embeddingTargets := make([]EmbeddingTarget, 0)
+	closEmbedded := make(map[string]bool)
 
 	for _, u := range structure.Units {
 		var unitID uuid.UUID
@@ -220,62 +256,39 @@ func (r *Repository) ApproveAndPromote(
 			RETURNING id
 		`, subjectCode, gradeLevel, u.Number, u.TitleEn).Scan(&unitID)
 		if err != nil {
-			return nil, fmt.Errorf("upsert unit %d (%q): %w", u.Number, u.TitleEn, err)
+			return nil, nil, fmt.Errorf("upsert unit %d (%q): %w", u.Number, u.TitleEn, err)
 		}
 
 		pu := promotedUnit{id: unitID, number: u.Number, titleEn: u.TitleEn}
 
 		for _, t := range u.Topics {
-			var topicID uuid.UUID
-			err = tx.QueryRow(ctx, `
-				INSERT INTO curriculum.topics
-					(unit_id, subject_code, grade_level, sequence_order, title_en, description, key_concepts)
-				VALUES ($1, $2, $3, $4, $5, $6, $7)
-				ON CONFLICT (unit_id, sequence_order) DO UPDATE SET
-					title_en     = EXCLUDED.title_en,
-					description  = EXCLUDED.description,
-					key_concepts = EXCLUDED.key_concepts
-				RETURNING id
-			`, unitID, subjectCode, gradeLevel, t.SequenceOrder, t.TitleEn, nullIfEmpty(t.RawText), t.KeyConcepts).Scan(&topicID)
+			pt, tp, cp, err := r.promoteOneTopic(
+				ctx, tx, unitID, subjectCode, gradeLevel, nil, t, userID, moeVersion,
+				closEmbedded, &embeddingTargets,
+			)
 			if err != nil {
-				return nil, fmt.Errorf("upsert topic %q (unit %d): %w", t.TitleEn, u.Number, err)
+				return nil, nil, fmt.Errorf("promote topic %q (unit %d): %w", t.TitleEn, u.Number, err)
 			}
-			topicsPromoted++
+			pu.topics = append(pu.topics, pt)
+			topicsPromoted += tp
+			closPromoted += cp
+		}
 
-			pu.topics = append(pu.topics, promotedTopic{
-				id: topicID, sequenceOrder: t.SequenceOrder, titleEn: t.TitleEn, keyConcepts: t.KeyConcepts,
-			})
-
-			for _, c := range t.Clos {
-				if c.Code == "" {
-					continue // can't upsert a CLO without its natural key
-				}
-				_, err = tx.Exec(ctx, `
-					INSERT INTO curriculum.clos
-						(code, subject_code, grade_level, description_en, bloom_level, is_mandatory, moe_version)
-					VALUES ($1, $2, $3, $4, $5, $6, $7)
-					ON CONFLICT (code) DO UPDATE SET
-						description_en = EXCLUDED.description_en,
-						bloom_level    = EXCLUDED.bloom_level,
-						is_mandatory   = EXCLUDED.is_mandatory
-				`, c.Code, subjectCode, gradeLevel, c.Description, nullIfEmpty(c.BloomLevel), c.Mandatory, moeVersion)
-				if err != nil {
-					return nil, fmt.Errorf("upsert clo %q: %w", c.Code, err)
-				}
-
-				_, err = tx.Exec(ctx, `
-					INSERT INTO curriculum.topic_clo_mappings (topic_id, clo_code, match_method, reviewed_by, confirmed_at)
-					VALUES ($1, $2, 'human_confirmed', $3, now())
-					ON CONFLICT (topic_id, clo_code) DO UPDATE SET
-						match_method = 'human_confirmed',
-						reviewed_by  = EXCLUDED.reviewed_by,
-						confirmed_at = now()
-				`, topicID, c.Code, userID)
-				if err != nil {
-					return nil, fmt.Errorf("upsert topic_clo_mapping %q: %w", c.Code, err)
-				}
-				closPromoted++
+		// Unit-level CLOs ("Unit Outcomes" in the source, not tied to one
+		// topic) are mapped to every topic and subtopic promoted under this
+		// unit, since curriculum.clos has no unit_id column of its own.
+		for _, c := range u.UnitClos {
+			if c.Code == "" {
+				continue
 			}
+			if err := r.upsertCLO(ctx, tx, subjectCode, gradeLevel, moeVersion, c, closEmbedded, &embeddingTargets); err != nil {
+				return nil, nil, err
+			}
+			n, err := r.mapCLOToAllTopics(ctx, tx, pu.topics, c, userID)
+			if err != nil {
+				return nil, nil, err
+			}
+			closPromoted += n
 		}
 
 		promotedUnits = append(promotedUnits, pu)
@@ -290,16 +303,16 @@ func (r *Repository) ApproveAndPromote(
 		WHERE id = $1 AND status IN ('parsed', 'review')
 	`, jobID, userID, finalStructureJSON)
 	if err != nil {
-		return nil, fmt.Errorf("mark job approved: %w", err)
+		return nil, nil, fmt.Errorf("mark job approved: %w", err)
 	}
 	if tag.RowsAffected() == 0 {
 		// Shouldn't happen given the FOR UPDATE check above, but guards
 		// against a status change slipping in between.
-		return nil, apperrors.Conflict("job status changed during approval; please retry")
+		return nil, nil, apperrors.Conflict("job status changed during approval; please retry")
 	}
 
 	if err := tx.Commit(ctx); err != nil {
-		return nil, fmt.Errorf("commit tx: %w", err)
+		return nil, nil, fmt.Errorf("commit tx: %w", err)
 	}
 
 	resp := &dto.ApproveResponse{
@@ -310,6 +323,10 @@ func (r *Repository) ApproveAndPromote(
 		TopicsPromoted: topicsPromoted,
 		ClosPromoted:   closPromoted,
 	}
+	result := &PromotionResult{
+		EmbeddingTargets: embeddingTargets,
+		TopicIDByCode:    topicIDByCode(promotedUnits),
+	}
 
 	// Step 4: the relational data is now the source of truth (committed
 	// above) -- mirror it into the Knowledge Graph. This is deliberately
@@ -319,7 +336,7 @@ func (r *Repository) ApproveAndPromote(
 	if err := r.syncCurriculumGraph(ctx, subjectCode, gradeLevel, academicYear, promotedUnits); err != nil {
 		resp.GraphSynced = false
 		resp.GraphSyncError = err.Error()
-		return resp, nil
+		return resp, result, nil
 	}
 
 	if _, err := r.pool.Exec(ctx,
@@ -329,11 +346,161 @@ func (r *Repository) ApproveAndPromote(
 		// failed to save. Still worth surfacing so it isn't silently lost.
 		resp.GraphSynced = false
 		resp.GraphSyncError = fmt.Sprintf("graph synced but failed to record neo4j_written: %v", err)
-		return resp, nil
+		return resp, result, nil
 	}
 
 	resp.GraphSynced = true
-	return resp, nil
+	return resp, result, nil
+}
+
+// topicIDByCode walks every promoted topic (and its subtopics) across all
+// units and collects a code -> id map for whichever ones the caller
+// tagged with ExternalCode -- see PromotionResult.
+func topicIDByCode(units []promotedUnit) map[string]uuid.UUID {
+	out := make(map[string]uuid.UUID)
+	var walk func(topics []promotedTopic)
+	walk = func(topics []promotedTopic) {
+		for _, t := range topics {
+			if t.externalCode != "" {
+				out[t.externalCode] = t.id
+			}
+			walk(t.subtopics)
+		}
+	}
+	for _, u := range units {
+		walk(u.topics)
+	}
+	return out
+}
+
+// promoteOneTopic upserts a single topic (or subtopic, when parentID is
+// non-nil) plus its own CLOs, returning enough (id, its CLOs, its
+// promoted subtopics) to mirror it into Neo4j and to map unit-level CLOs
+// onto it afterwards. Recurses one level for t.Subtopics -- see
+// dto.ParsedTopic's doc comment on why the recursive shape exists despite
+// nothing going deeper than one level in practice.
+func (r *Repository) promoteOneTopic(
+	ctx context.Context, tx pgx.Tx,
+	unitID uuid.UUID, subjectCode string, gradeLevel int, parentID *uuid.UUID,
+	t dto.ParsedTopic, userID uuid.UUID, moeVersion string,
+	closEmbedded map[string]bool, embeddingTargets *[]EmbeddingTarget,
+) (promotedTopic, int, int, error) {
+	var topicID uuid.UUID
+	err := tx.QueryRow(ctx, `
+		INSERT INTO curriculum.topics
+			(unit_id, subject_code, grade_level, sequence_order, title_en, description, key_concepts, parent_topic_id)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+		ON CONFLICT (unit_id, sequence_order) DO UPDATE SET
+			title_en        = EXCLUDED.title_en,
+			description     = EXCLUDED.description,
+			key_concepts    = EXCLUDED.key_concepts,
+			parent_topic_id = EXCLUDED.parent_topic_id
+		RETURNING id
+	`, unitID, subjectCode, gradeLevel, t.SequenceOrder, t.TitleEn, nullIfEmpty(t.RawText), t.KeyConcepts, parentID).Scan(&topicID)
+	if err != nil {
+		return promotedTopic{}, 0, 0, fmt.Errorf("upsert topic %q: %w", t.TitleEn, err)
+	}
+
+	*embeddingTargets = append(*embeddingTargets, EmbeddingTarget{Kind: "topic", TopicID: topicID})
+	pt := promotedTopic{
+		id: topicID, parentID: parentID, externalCode: t.ExternalCode,
+		sequenceOrder: t.SequenceOrder, titleEn: t.TitleEn, keyConcepts: t.KeyConcepts,
+	}
+	topicsPromoted, closPromoted := 1, 0
+
+	for _, c := range t.Clos {
+		if c.Code == "" {
+			continue // can't upsert a CLO without its natural key
+		}
+		if err := r.upsertCLO(ctx, tx, subjectCode, gradeLevel, moeVersion, c, closEmbedded, embeddingTargets); err != nil {
+			return promotedTopic{}, 0, 0, err
+		}
+		if err := r.upsertTopicCLOMapping(ctx, tx, topicID, c.Code, userID, "human_confirmed"); err != nil {
+			return promotedTopic{}, 0, 0, err
+		}
+		pt.clos = append(pt.clos, promotedCLO{code: c.Code, description: c.Description})
+		closPromoted++
+	}
+
+	for _, st := range t.Subtopics {
+		spt, stp, scp, err := r.promoteOneTopic(ctx, tx, unitID, subjectCode, gradeLevel, &topicID, st, userID, moeVersion, closEmbedded, embeddingTargets)
+		if err != nil {
+			return promotedTopic{}, 0, 0, err
+		}
+		pt.subtopics = append(pt.subtopics, spt)
+		topicsPromoted += stp
+		closPromoted += scp
+	}
+
+	return pt, topicsPromoted, closPromoted, nil
+}
+
+// upsertCLO upserts one curriculum.clos row and registers it for
+// embedding generation at most once per ApproveAndPromote call (dedup via
+// closEmbedded) -- it does NOT touch topic_clo_mappings, since a CLO can
+// be mapped to several topics (a unit-level CLO is mapped to every topic
+// in the unit) via separate calls to upsertTopicCLOMapping.
+func (r *Repository) upsertCLO(
+	ctx context.Context, tx pgx.Tx, subjectCode string, gradeLevel int, moeVersion string,
+	c dto.ParsedCLO, closEmbedded map[string]bool, embeddingTargets *[]EmbeddingTarget,
+) error {
+	_, err := tx.Exec(ctx, `
+		INSERT INTO curriculum.clos
+			(code, subject_code, grade_level, description_en, bloom_level, is_mandatory, moe_version)
+		VALUES ($1, $2, $3, $4, $5, $6, $7)
+		ON CONFLICT (code) DO UPDATE SET
+			description_en = EXCLUDED.description_en,
+			bloom_level    = EXCLUDED.bloom_level,
+			is_mandatory   = EXCLUDED.is_mandatory
+	`, c.Code, subjectCode, gradeLevel, c.Description, nullIfEmpty(c.BloomLevel), c.Mandatory, moeVersion)
+	if err != nil {
+		return fmt.Errorf("upsert clo %q: %w", c.Code, err)
+	}
+	if !closEmbedded[c.Code] {
+		closEmbedded[c.Code] = true
+		*embeddingTargets = append(*embeddingTargets, EmbeddingTarget{Kind: "clo", CloCode: c.Code})
+	}
+	return nil
+}
+
+func (r *Repository) upsertTopicCLOMapping(ctx context.Context, tx pgx.Tx, topicID uuid.UUID, cloCode string, userID uuid.UUID, matchMethod string) error {
+	_, err := tx.Exec(ctx, `
+		INSERT INTO curriculum.topic_clo_mappings (topic_id, clo_code, match_method, reviewed_by, confirmed_at)
+		VALUES ($1, $2, $3, $4, now())
+		ON CONFLICT (topic_id, clo_code) DO UPDATE SET
+			match_method = EXCLUDED.match_method,
+			reviewed_by  = EXCLUDED.reviewed_by,
+			confirmed_at = now()
+	`, topicID, cloCode, matchMethod, userID)
+	if err != nil {
+		return fmt.Errorf("upsert topic_clo_mapping %q: %w", cloCode, err)
+	}
+	return nil
+}
+
+// mapCLOToAllTopics maps a unit-level CLO to every topic and subtopic in
+// `topics` (match_method "manual", distinguishing it from a direct
+// topic-CLO pairing) and mirrors it into each one's .clos so the Neo4j
+// sync sees it too. Mutates `topics` in place through the shared backing
+// array -- callers don't need to reassign the slice they passed in.
+func (r *Repository) mapCLOToAllTopics(ctx context.Context, tx pgx.Tx, topics []promotedTopic, c dto.ParsedCLO, userID uuid.UUID) (int, error) {
+	count := 0
+	for i := range topics {
+		if err := r.upsertTopicCLOMapping(ctx, tx, topics[i].id, c.Code, userID, "manual"); err != nil {
+			return 0, err
+		}
+		topics[i].clos = append(topics[i].clos, promotedCLO{code: c.Code, description: c.Description})
+		count++
+
+		if len(topics[i].subtopics) > 0 {
+			n, err := r.mapCLOToAllTopics(ctx, tx, topics[i].subtopics, c, userID)
+			if err != nil {
+				return 0, err
+			}
+			count += n
+		}
+	}
+	return count, nil
 }
 
 // syncCurriculumGraph mirrors an approved Subject -> Units -> Topics tree
@@ -372,31 +539,83 @@ func (r *Repository) syncCurriculumGraph(
 		}
 
 		for _, t := range u.topics {
-			keyConcepts := t.keyConcepts
-			if keyConcepts == nil {
-				keyConcepts = []string{}
+			if err := r.syncTopicToNeo4j(ctx, session, u.id, subjectCode, gradeLevel, t); err != nil {
+				return fmt.Errorf("sync topic %q (unit %d): %w", t.titleEn, u.number, err)
 			}
-			_, err := session.Run(ctx, `
-				MATCH (unit:Unit {id: $unitId})
-				MERGE (topic:Topic {id: $topicId})
-				SET topic.titleEn = $titleEn,
-				    topic.sequenceOrder = $sequenceOrder,
-				    topic.keyConcepts = $keyConcepts,
-				    topic.subjectCode = $subjectCode,
-				    topic.gradeLevel = $gradeLevel
-				MERGE (unit)-[:HAS_TOPIC]->(topic)
-			`, map[string]any{
-				"unitId":        u.id.String(),
-				"topicId":       t.id.String(),
-				"titleEn":       t.titleEn,
-				"sequenceOrder": int64(t.sequenceOrder),
-				"keyConcepts":   keyConcepts,
-				"subjectCode":   subjectCode,
-				"gradeLevel":    int64(gradeLevel),
-			})
-			if err != nil {
-				return fmt.Errorf("sync topic %q (unit %d) to neo4j: %w", t.titleEn, u.number, err)
-			}
+		}
+	}
+	return nil
+}
+
+// syncTopicToNeo4j mirrors one topic (or subtopic) plus its CLOs, then
+// recurses into its own subtopics. Every promoted topic -- top-level or
+// subtopic -- gets a direct (:Unit)-[:HAS_TOPIC]->(:Topic) edge (so
+// existing unit->topic traversals, e.g. the class heatmap, see subtopics
+// too without a schema-aware rewrite); a subtopic additionally gets
+// (:Topic)-[:HAS_SUBTOPIC]->(:Topic) from its parent, mirroring
+// parent_topic_id (V027). CLOs -- topic-level and unit-level alike, both
+// already flattened into promotedTopic.clos by ApproveAndPromote -- are
+// mirrored as (:Topic)-[:HAS_CLO]->(:CLO), closing the gap noted in
+// CLAUDE.md ("CLO Neo4j sync deferred to Phase 2") for the topics/CLOs
+// this function actually touches.
+func (r *Repository) syncTopicToNeo4j(
+	ctx context.Context, session neo4jdriver.SessionWithContext,
+	unitID uuid.UUID, subjectCode string, gradeLevel int, t promotedTopic,
+) error {
+	keyConcepts := t.keyConcepts
+	if keyConcepts == nil {
+		keyConcepts = []string{}
+	}
+	_, err := session.Run(ctx, `
+		MATCH (unit:Unit {id: $unitId})
+		MERGE (topic:Topic {id: $topicId})
+		SET topic.titleEn = $titleEn,
+		    topic.sequenceOrder = $sequenceOrder,
+		    topic.keyConcepts = $keyConcepts,
+		    topic.subjectCode = $subjectCode,
+		    topic.gradeLevel = $gradeLevel
+		MERGE (unit)-[:HAS_TOPIC]->(topic)
+	`, map[string]any{
+		"unitId":        unitID.String(),
+		"topicId":       t.id.String(),
+		"titleEn":       t.titleEn,
+		"sequenceOrder": int64(t.sequenceOrder),
+		"keyConcepts":   keyConcepts,
+		"subjectCode":   subjectCode,
+		"gradeLevel":    int64(gradeLevel),
+	})
+	if err != nil {
+		return fmt.Errorf("sync topic node: %w", err)
+	}
+
+	if t.parentID != nil {
+		if _, err := session.Run(ctx, `
+			MATCH (parent:Topic {id: $parentId})
+			MATCH (topic:Topic {id: $topicId})
+			MERGE (parent)-[:HAS_SUBTOPIC]->(topic)
+		`, map[string]any{"parentId": t.parentID.String(), "topicId": t.id.String()}); err != nil {
+			return fmt.Errorf("sync subtopic relationship: %w", err)
+		}
+	}
+
+	for _, c := range t.clos {
+		if _, err := session.Run(ctx, `
+			MATCH (topic:Topic {id: $topicId})
+			MERGE (clo:CLO {code: $code})
+			SET clo.description = $description
+			MERGE (topic)-[:HAS_CLO]->(clo)
+		`, map[string]any{
+			"topicId":     t.id.String(),
+			"code":        c.code,
+			"description": c.description,
+		}); err != nil {
+			return fmt.Errorf("sync clo %q: %w", c.code, err)
+		}
+	}
+
+	for _, st := range t.subtopics {
+		if err := r.syncTopicToNeo4j(ctx, session, unitID, subjectCode, gradeLevel, st); err != nil {
+			return err
 		}
 	}
 	return nil

@@ -38,6 +38,11 @@ GAP_ANALYZE_QUEUE = "queue:gap:analyze"
 # "language"}) pushed when a student requests a study plan -- consumed by
 # app/workers/study_plan_worker.py.
 STUDYPLAN_QUEUE = "queue:studyplan:generate"
+# Feature 1.1: JSON payload ({"kind": "topic", "id": ...} or {"kind": "clo",
+# "code": ...}) pushed once per promoted topic/CLO when a curriculum job is
+# approved (ApproveAndPromote in curriculum/service/service.go) -- consumed
+# by app/workers/embed_worker.py.
+EMBEDDING_QUEUE = "queue:embedding:generate"
 
 _client: Optional[redis.Redis] = None
 

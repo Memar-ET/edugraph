@@ -1,6 +1,6 @@
 // Command sync-agent runs on a School Box and keeps its local Postgres in
 // sync with the Central Cloud whenever connectivity is available: pushing
-// the local sync.outbox (see V026__sync_outbox.sql) and pulling/applying
+// the local sync.outbox (see V029__sync_outbox.sql) and pulling/applying
 // changes back down. See internal/sync for the actual push/pull/merge
 // logic — this file only handles config, wiring, and lifecycle.
 package main

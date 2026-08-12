@@ -1,3 +1,5 @@
+import urllib.parse
+
 from pydantic_settings import BaseSettings
 
 
@@ -8,6 +10,7 @@ class Settings(BaseSettings):
     POSTGRES_DB: str = "edugraph"
     POSTGRES_USER: str = "edugraph"
     POSTGRES_PASSWORD: str = "password"
+    POSTGRES_SSLMODE: str = "disable"
     POSTGRES_MAX_CONNS: int = 80
 
     # ── NEO4J ────────────────────────────────
@@ -30,7 +33,7 @@ class Settings(BaseSettings):
     OLLAMA_HOST: str = "ollama:11434"
     EMBEDDING_MODEL: str = "intfloat/multilingual-e5-large"
     # Must match this model's real output width -- see
-    # db/migrations/V025__fix_embedding_dimension.sql. Checked defensively
+    # db/migrations/V028__fix_embedding_dimensions.sql. Checked defensively
     # in embeddings-dependent code paths so a future EMBEDDING_MODEL swap
     # to a different-width model fails loudly instead of silently
     # corrupting the pgvector columns.
@@ -48,10 +51,19 @@ class Settings(BaseSettings):
 
     @property
     def POSTGRES_DSN(self) -> str:
-        """asyncpg connection string built from the individual settings above."""
+        """
+        asyncpg connection string built from the individual settings above.
+        User/password are percent-encoded -- Supabase pooler credentials
+        commonly contain characters (@, ?, &) that would otherwise be
+        misparsed as URL delimiters. asyncpg 0.29 understands `sslmode` as
+        a DSN query param the same way libpq does.
+        """
+        user = urllib.parse.quote(self.POSTGRES_USER, safe="")
+        password = urllib.parse.quote(self.POSTGRES_PASSWORD, safe="")
         return (
-            f"postgresql://{self.POSTGRES_USER}:{self.POSTGRES_PASSWORD}"
+            f"postgresql://{user}:{password}"
             f"@{self.POSTGRES_HOST}:{self.POSTGRES_PORT}/{self.POSTGRES_DB}"
+            f"?sslmode={self.POSTGRES_SSLMODE}"
         )
 
 

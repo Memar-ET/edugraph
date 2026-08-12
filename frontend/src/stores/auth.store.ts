@@ -52,8 +52,9 @@ export function canAccessStudentDashboard(role: string | undefined): boolean {
 // already-authenticated guards on / and /login. Every role except
 // curriculum_officer lands on '/', which the index route's DashboardRouter
 // dispatches to a role-specific dashboard component -- curriculum_officer
-// has no dashboard endpoint yet, so it goes straight into the pipeline.
+// lands on its own dashboard (feature 1.2) instead, since '/' has no
+// DashboardRouter case for it.
 export function landingPathFor(role: string | undefined): string {
-  if (role === 'curriculum_officer') return '/curriculum/upload'
+  if (role === 'curriculum_officer') return '/curriculum'
   return '/'
 }
