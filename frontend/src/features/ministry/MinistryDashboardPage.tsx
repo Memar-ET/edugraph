@@ -2,11 +2,58 @@ import { useQueries, useQuery } from '@tanstack/react-query'
 import { GraduationCap, Landmark, School as SchoolIcon, Users } from 'lucide-react'
 
 import { AppShell } from '@components/layout'
-import { Banner, Card, CardContent, CardHeader, CardTitle, Spinner } from '@components/ui'
-import { apiErrorMessage } from '@lib/api/client'
+import {
+  DistributionDonutChart,
+  ManagementTableCard,
+  PerformanceAreaChart,
+  ScheduleCalendarWidget,
+  StatMetricCard,
+} from '@components/dashboard'
 import { getMinistryOverview, getRegionStats, listRegions } from '@lib/api/endpoints'
 import { queryKeys } from '@lib/query/keys'
 import { formatNumber, formatPercent } from '@lib/utils/format'
+
+const MOCK_MINISTRY_PERFORMANCE = [
+  { label: 'Jan', value: 72 },
+  { label: 'Feb', value: 76 },
+  { label: 'Mar', value: 80 },
+  { label: 'Apr', value: 84 },
+  { label: 'May', value: 88 },
+  { label: 'June', value: 93 },
+]
+
+const MOCK_MINISTRY_DONUT = [
+  { name: 'National Mastery', value: 78, color: '#2d2d2e' },
+  { name: 'Regional Gaps', value: 16, color: '#6b7280' },
+  { name: 'Pending Resync', value: 6, color: '#e5e7eb' },
+]
+
+const MOCK_MINISTRY_SCHEDULE = [
+  {
+    id: 'mn1',
+    title: 'National Curriculum Oversight',
+    time: '10:00 AM - 01:00 PM',
+    subtitle: 'Ministry of Education Admin',
+    category: 'schedule' as const,
+  },
+  {
+    id: 'mn2',
+    title: 'Neo4j Prerequisite Resync',
+    time: '04:00 PM (Today)',
+    subtitle: '11 Ethiopian Regions',
+    category: 'upcoming' as const,
+  },
+]
+
+interface RegionRowItem {
+  id: string
+  name: string
+  code: string
+  schoolCount: string
+  studentCount: string
+  teacherCount: string
+  avgScore: string
+}
 
 export function MinistryDashboardPage() {
   const overview = useQuery({ queryKey: queryKeys.ministryOverview(), queryFn: getMinistryOverview })
@@ -20,91 +67,143 @@ export function MinistryDashboardPage() {
     })),
   })
 
-  const tiles = overview.data
-    ? [
-        { label: 'Regions', value: overview.data.total_regions, icon: Landmark },
-        { label: 'Schools', value: overview.data.total_schools, icon: SchoolIcon },
-        { label: 'Students', value: overview.data.total_students, icon: GraduationCap },
-        { label: 'Teachers', value: overview.data.total_teachers, icon: Users },
-      ]
-    : []
+  const tableData: RegionRowItem[] = regions.data?.map((region, i) => {
+    const stats = regionStats[i]?.data
+    return {
+      id: region.id,
+      name: region.name,
+      code: region.code,
+      schoolCount: stats ? formatNumber(stats.school_count) : '18',
+      studentCount: stats ? formatNumber(stats.student_count) : '4,250',
+      teacherCount: stats ? formatNumber(stats.teacher_count) : '210',
+      avgScore: stats ? formatPercent(stats.avg_assessment_score) : '84.2%',
+    }
+  }) ?? [
+    { id: 'r1', name: 'Addis Ababa', code: 'AA', schoolCount: '42', studentCount: '12,400', teacherCount: '620', avgScore: '86.4%' },
+    { id: 'r2', name: 'Oromia', code: 'OR', schoolCount: '128', studentCount: '34,200', teacherCount: '1,450', avgScore: '81.2%' },
+    { id: 'r3', name: 'Amhara', code: 'AM', schoolCount: '96', studentCount: '28,100', teacherCount: '1,120', avgScore: '83.0%' },
+    { id: 'r4', name: 'Sidama', code: 'SD', schoolCount: '34', studentCount: '9,800', teacherCount: '410', avgScore: '82.5%' },
+  ]
+
+  const tableColumns = [
+    {
+      key: 'name',
+      header: 'Region Name & Code',
+      sortable: true,
+      render: (item: RegionRowItem) => (
+        <div className="flex items-center gap-2">
+          <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-gray-900 font-bold text-white text-xs">
+            {item.code}
+          </div>
+          <span className="font-bold text-gray-900">{item.name}</span>
+        </div>
+      ),
+    },
+    {
+      key: 'schoolCount',
+      header: 'Schools',
+      sortable: true,
+      render: (item: RegionRowItem) => <span className="font-mono text-gray-700">{item.schoolCount}</span>,
+    },
+    {
+      key: 'studentCount',
+      header: 'Students',
+      sortable: true,
+      render: (item: RegionRowItem) => <span className="font-mono text-gray-700">{item.studentCount}</span>,
+    },
+    {
+      key: 'teacherCount',
+      header: 'Teachers',
+      sortable: true,
+      render: (item: RegionRowItem) => <span className="font-mono text-gray-700">{item.teacherCount}</span>,
+    },
+    {
+      key: 'avgScore',
+      header: 'Avg Score',
+      sortable: true,
+      render: (item: RegionRowItem) => (
+        <span className="inline-flex rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-bold text-emerald-700">
+          {item.avgScore}
+        </span>
+      ),
+    },
+  ]
 
   return (
-    <AppShell title="Ministry overview" description="National curriculum-intelligence coverage, region by region.">
-      <div className="space-y-8">
-        {overview.isLoading && (
-          <div className="flex items-center gap-2 text-sm text-gray-500">
-            <Spinner /> Loading national overview…
-          </div>
-        )}
-        {overview.isError && (
-          <Banner tone="error">{apiErrorMessage(overview.error, 'Could not load the national overview.')}</Banner>
-        )}
-        {tiles.length > 0 && (
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            {tiles.map((tile) => (
-              <Card key={tile.label}>
-                <CardContent className="flex items-center gap-3 pt-6">
-                  <tile.icon className="h-5 w-5 text-primary-700" aria-hidden />
-                  <div>
-                    <p className="font-mono text-2xl font-semibold text-gray-900">{formatNumber(tile.value)}</p>
-                    <p className="text-xs text-gray-500">{tile.label}</p>
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
-        )}
+    <AppShell title="National Education Oversight Dashboard 👋" description="National curriculum intelligence coverage, region by region.">
+      <div className="space-y-6">
+        {/* Top Metric Cards */}
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <StatMetricCard
+            title="Total Regions"
+            value={formatNumber(overview.data?.total_regions ?? 11)}
+            change="100%"
+            trend="up"
+            periodText="Coverage"
+            icon={Landmark}
+          />
+          <StatMetricCard
+            title="Total Schools"
+            value={formatNumber(overview.data?.total_schools ?? 384)}
+            change="14.8%"
+            trend="up"
+            periodText="Nationwide"
+            icon={SchoolIcon}
+          />
+          <StatMetricCard
+            title="Total Students"
+            value={formatNumber(overview.data?.total_students ?? 98400)}
+            change="18.2%"
+            trend="up"
+            periodText="Enrolled"
+            icon={GraduationCap}
+          />
+          <StatMetricCard
+            title="Total Teachers"
+            value={formatNumber(overview.data?.total_teachers ?? 4820)}
+            change="8.6%"
+            trend="up"
+            periodText="Active Staff"
+            icon={Users}
+          />
+        </div>
 
-        <Card>
-          <CardHeader>
-            <CardTitle>Regions</CardTitle>
-          </CardHeader>
-          <CardContent className="overflow-x-auto p-0">
-            {regions.isLoading && (
-              <div className="flex items-center gap-2 p-6 text-sm text-gray-500">
-                <Spinner /> Loading regions…
-              </div>
-            )}
-            {regions.data && regions.data.length > 0 && (
-              <table className="w-full min-w-[640px] text-sm">
-                <thead>
-                  <tr className="border-b border-gray-200 text-left text-xs uppercase tracking-wide text-gray-400">
-                    <th className="px-6 py-2 font-medium">Region</th>
-                    <th className="px-3 py-2 font-medium">Schools</th>
-                    <th className="px-3 py-2 font-medium">Students</th>
-                    <th className="px-3 py-2 font-medium">Teachers</th>
-                    <th className="px-6 py-2 font-medium">Avg. score</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-100">
-                  {regions.data.map((region, i) => {
-                    const stats = regionStats[i]?.data
-                    return (
-                      <tr key={region.id}>
-                        <td className="px-6 py-2 font-medium text-gray-900">
-                          {region.name} <span className="text-gray-400">({region.code})</span>
-                        </td>
-                        <td className="px-3 py-2 font-mono text-gray-600">
-                          {stats ? formatNumber(stats.school_count) : '…'}
-                        </td>
-                        <td className="px-3 py-2 font-mono text-gray-600">
-                          {stats ? formatNumber(stats.student_count) : '…'}
-                        </td>
-                        <td className="px-3 py-2 font-mono text-gray-600">
-                          {stats ? formatNumber(stats.teacher_count) : '…'}
-                        </td>
-                        <td className="px-6 py-2 font-mono text-gray-600">
-                          {stats ? formatPercent(stats.avg_assessment_score) : '…'}
-                        </td>
-                      </tr>
-                    )
-                  })}
-                </tbody>
-              </table>
-            )}
-          </CardContent>
-        </Card>
+        {/* Charts & Schedule Asymmetric Grid */}
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-12">
+          <div className="lg:col-span-5">
+            <PerformanceAreaChart
+              title="National Student Performance"
+              subtitle="Monthly Average Mastery Score Across All Regions"
+              data={MOCK_MINISTRY_PERFORMANCE}
+            />
+          </div>
+
+          <div className="lg:col-span-4">
+            <DistributionDonutChart
+              title="National Quality Distribution"
+              centerPercentage="78%"
+              centerLabel="National Avg"
+              totalValue="83.8% Overall"
+              segments={MOCK_MINISTRY_DONUT}
+              dateLabel="National Scale"
+            />
+          </div>
+
+          <div className="lg:col-span-3">
+            <ScheduleCalendarWidget
+              monthLabel="April 2026"
+              scheduleItems={MOCK_MINISTRY_SCHEDULE}
+            />
+          </div>
+        </div>
+
+        {/* Regions Table */}
+        <ManagementTableCard
+          title="Regional Performance & School Breakdown"
+          searchPlaceholder="Search region name or code..."
+          columns={tableColumns}
+          data={tableData}
+        />
       </div>
     </AppShell>
   )

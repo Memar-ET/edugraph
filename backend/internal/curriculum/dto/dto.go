@@ -57,24 +57,47 @@ type ParsedCLO struct {
 }
 
 // ParsedTopic mirrors a curriculum.topics row.
+//
+// Subtopics are themselves ParsedTopic (promoted as their own topics rows
+// with parent_topic_id set -- see migration V027) rather than a separate
+// type, since a subtopic needs exactly the same fields a topic does
+// (title, CLOs, sequence order). In practice they're one level deep --
+// nothing promotes a subtopic's own Subtopics -- but the recursive shape
+// costs nothing and matches parent_topic_id being self-referential in the
+// schema.
 type ParsedTopic struct {
-	SequenceOrder    int         `json:"sequenceOrder"`
-	TitleEn          string      `json:"titleEn" validate:"required"`
-	KeyConcepts      []string    `json:"keyConcepts"`
-	LearningOutcomes []string    `json:"learningOutcomes"`
-	Clos             []ParsedCLO `json:"clos"`
-	RawText          string      `json:"rawText"`
+	SequenceOrder    int           `json:"sequenceOrder"`
+	TitleEn          string        `json:"titleEn" validate:"required"`
+	KeyConcepts      []string      `json:"keyConcepts"`
+	LearningOutcomes []string      `json:"learningOutcomes"`
+	Clos             []ParsedCLO   `json:"clos"`
+	RawText          string        `json:"rawText"`
+	Subtopics        []ParsedTopic `json:"subtopics,omitempty"`
+
+	// ExternalCode is an opaque, caller-supplied identifier from the
+	// source document (e.g. "G9.U2.T2.2" for the Ethiopian MoE Biology
+	// syllabus) -- never read by the AI parser or written to Postgres,
+	// purely so a bulk importer can resolve its own source-document IDs
+	// back to the generated topic UUIDs after promotion (see
+	// Repository.ApproveAndPromote's PromotionResult.TopicIDByCode).
+	ExternalCode string `json:"externalCode,omitempty"`
 }
 
 // ParsedUnit mirrors a curriculum.units row. Metadata carries extra fields
 // lifted from a unit's metadata table (subjectCode, focus,
 // indicativeCloCount, ...) that don't map to a curriculum.units column --
 // kept for the officer's review context, not promoted into Postgres.
+//
+// UnitClos are CLOs stated at unit level rather than tied to one topic
+// (e.g. a syllabus's "Unit Outcomes" list). Since curriculum.clos has no
+// unit_id column, each one is mapped via topic_clo_mappings to every
+// topic (and subtopic) promoted under this unit -- see ApproveAndPromote.
 type ParsedUnit struct {
 	Number   int               `json:"number" validate:"required"`
 	TitleEn  string            `json:"titleEn" validate:"required"`
 	Topics   []ParsedTopic     `json:"topics"`
 	Metadata map[string]string `json:"metadata,omitempty"`
+	UnitClos []ParsedCLO       `json:"unitClos,omitempty"`
 }
 
 // ParsedStructurePayload is the full tree, matching upload_jobs.parsed_structure.

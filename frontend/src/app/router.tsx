@@ -8,7 +8,16 @@ import {
 } from '@tanstack/react-router'
 
 import { LoginPage } from '@features/auth'
-import { JobReviewPage, UploadPage } from '@features/curriculum'
+import {
+  CurriculumDashboardPage,
+  CurriculumGraphPage,
+  CurriculumVersionsPage,
+  JobReviewPage,
+  MinistryCurriculumDetailPage,
+  MinistryCurriculumPage,
+  PrerequisitesPage,
+  UploadPage,
+} from '@features/curriculum'
 import {
   ExamQualityPage,
   ExamReviewPage,
@@ -116,11 +125,53 @@ function requireAuth() {
   if (!accessToken) throw redirect({ to: '/login' })
 }
 
+const curriculumDashboardRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/curriculum',
+  beforeLoad: requireCurriculumAccess,
+  component: CurriculumDashboardPage,
+})
+
 const uploadRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/curriculum/upload',
   beforeLoad: requireCurriculumAccess,
   component: UploadPage,
+})
+
+const prerequisitesRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/curriculum/prerequisites',
+  beforeLoad: requireCurriculumAccess,
+  component: PrerequisitesPage,
+})
+
+const curriculumVersionsRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/curriculum/versions',
+  beforeLoad: requireCurriculumAccess,
+  component: CurriculumVersionsPage,
+})
+
+const curriculumGraphRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/curriculum/subjects/$code/graph',
+  beforeLoad: requireCurriculumAccess,
+  component: CurriculumGraphPage,
+})
+
+const ministryCurriculumRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/ministry/curriculum',
+  beforeLoad: requireCurriculumAccess,
+  component: MinistryCurriculumPage,
+})
+
+const ministryCurriculumDetailRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/ministry/curriculum/$code',
+  beforeLoad: requireCurriculumAccess,
+  component: MinistryCurriculumDetailPage,
 })
 
 const jobReviewRoute = createRoute({
@@ -189,7 +240,13 @@ const careerPathsRoute = createRoute({
 const routeTree = rootRoute.addChildren([
   indexRoute,
   loginRoute,
+  curriculumDashboardRoute,
   uploadRoute,
+  prerequisitesRoute,
+  curriculumVersionsRoute,
+  curriculumGraphRoute,
+  ministryCurriculumRoute,
+  ministryCurriculumDetailRoute,
   jobReviewRoute,
   examUploadRoute,
   examReviewRoute,

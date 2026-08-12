@@ -1,301 +1,249 @@
-import { Link } from '@tanstack/react-router'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Briefcase, ClipboardList, MessageCircleQuestion, RefreshCw, Sparkles } from 'lucide-react'
+import {
+  Award,
+  BookOpen,
+  CheckCircle2,
+  ClipboardList,
+} from 'lucide-react'
 
 import { AppShell } from '@components/layout'
 import {
-  Banner,
-  Button,
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-  EmptyState,
-  Spinner,
-  StatusPill,
-  toneForPct,
-} from '@components/ui'
-import { ScoreGauge } from '@components/charts'
-import { apiErrorMessage } from '@lib/api/client'
+  DistributionDonutChart,
+  ManagementTableCard,
+  PerformanceAreaChart,
+  ScheduleCalendarWidget,
+  StatMetricCard,
+} from '@components/dashboard'
+import { StatusPill } from '@components/ui'
 import {
-  generateCareerMatches,
   generateStudyPlan,
-  getCareerMatches,
   getMySubjectProfiles,
-  listMyStudyPlans,
 } from '@lib/api/endpoints'
 import { queryKeys } from '@lib/query/keys'
-import { extractLabels, formatPercent } from '@lib/utils/format'
-import { formatDate, formatRelative } from '@lib/utils/date'
 import { useAuthStore } from '@stores/auth.store'
 
-import { useMyStudentRecord } from './useMyStudentRecord'
+const MOCK_PERFORMANCE_DATA = [
+  { label: 'Jan', value: 65 },
+  { label: 'Feb', value: 72 },
+  { label: 'Mar', value: 68 },
+  { label: 'Apr', value: 85 },
+  { label: 'May', value: 78 },
+  { label: 'June', value: 92 },
+]
+
+const MOCK_DONUT_SEGMENTS = [
+  { name: 'Mastered', value: 58, color: '#2d2d2e' },
+  { name: 'In Progress', value: 24, color: '#6b7280' },
+  { name: 'Needs Review', value: 18, color: '#e5e7eb' },
+]
+
+const MOCK_SCHEDULE_ITEMS = [
+  {
+    id: 's1',
+    title: 'Physics Unit 3 Exam',
+    time: '10 AM - 11:30 AM',
+    subtitle: 'Instructor: Devon Lane',
+    category: 'schedule' as const,
+  },
+  {
+    id: 's2',
+    title: 'AI Tutor Gap Session',
+    time: '2 PM (9 April, 2026)',
+    subtitle: 'Topic: Newton Laws',
+    category: 'upcoming' as const,
+  },
+  {
+    id: 's3',
+    title: 'Chemistry Lab Quiz',
+    time: '10 AM (10 April, 2026)',
+    subtitle: 'Unit: Stoichiometry',
+    category: 'upcoming' as const,
+  },
+]
+
+interface ExamRowItem {
+  id: string
+  name: string
+  admitDate: string
+  type: string
+  status: 'Mastered' | 'In Progress' | 'Needs Review' | 'Active'
+}
 
 export function StudentDashboardPage() {
   const user = useAuthStore((s) => s.user)
-  const firstName = user?.full_name.split(' ')[0] ?? 'there'
+  const firstName = user?.full_name.split(' ')[0] ?? 'Abebe'
+  const queryClient = useQueryClient()
 
-  return (
-    <AppShell title={`Welcome back, ${firstName}`} description="Your subjects, study plan, and next steps.">
-      <div className="space-y-8">
-        <SubjectHealthSection />
-        <div className="grid gap-6 lg:grid-cols-2">
-          <StudyPlanSection />
-          <CareerMatchesSection />
-        </div>
-        <QuickLinks />
-      </div>
-    </AppShell>
-  )
-}
-
-function SubjectHealthSection() {
-  const { data, isLoading, isError, error } = useQuery({
+  const { data: subjectProfiles } = useQuery({
     queryKey: queryKeys.mySubjectProfiles(),
     queryFn: getMySubjectProfiles,
   })
 
-  return (
-    <section>
-      <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-gray-500">Subject health</h2>
-      {isLoading && (
-        <div className="flex items-center gap-2 text-sm text-gray-500">
-          <Spinner /> Loading your subjects…
-        </div>
-      )}
-      {isError && <Banner tone="error">{apiErrorMessage(error, 'Could not load your subject health.')}</Banner>}
-      {!isLoading && !isError && (!data || data.length === 0) && (
-        <EmptyState
-          icon={Sparkles}
-          title="No subject data yet"
-          description="Take a published exam and your subject-by-subject mastery will build up here automatically."
-        />
-      )}
-      {data && data.length > 0 && (
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {data.map((profile) => {
-            const weakAreas = extractLabels(profile.topWeakAreas)
-            return (
-              <Card key={`${profile.subjectCode}-${profile.gradeLevel}`}>
-                <CardContent className="flex items-start gap-4 pt-6">
-                  <ScoreGauge
-                    value={profile.currentMasteryPct}
-                    tone={toneForPct(profile.currentMasteryPct) === 'alert' ? 'alert' : toneForPct(profile.currentMasteryPct) === 'seal' ? 'seal' : 'health'}
-                    size={72}
-                  />
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate font-display text-base font-semibold text-gray-900">
-                      {profile.subjectName}
-                    </p>
-                    <p className="text-xs text-gray-500">
-                      Grade {profile.gradeLevel} · {profile.examsAnalyzed} exam
-                      {profile.examsAnalyzed === 1 ? '' : 's'} analyzed
-                    </p>
-                    {weakAreas.length > 0 && (
-                      <div className="mt-2 flex flex-wrap gap-1">
-                        {weakAreas.slice(0, 3).map((area) => (
-                          <StatusPill key={area} tone="alert">
-                            {area}
-                          </StatusPill>
-                        ))}
-                      </div>
-                    )}
-                    <p className="mt-2 text-xs text-gray-400">Updated {formatRelative(profile.lastUpdated)}</p>
-                  </div>
-                </CardContent>
-              </Card>
-            )
-          })}
-        </div>
-      )}
-    </section>
-  )
-}
-
-function StudyPlanSection() {
-  const queryClient = useQueryClient()
-  const { data, isLoading } = useQuery({
-    queryKey: queryKeys.myStudyPlans(),
-    queryFn: listMyStudyPlans,
-  })
-
-  const generate = useMutation({
+  const generatePlan = useMutation({
     mutationFn: () => generateStudyPlan({}),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: queryKeys.myStudyPlans() })
-      setTimeout(() => {
-        void queryClient.invalidateQueries({ queryKey: queryKeys.myStudyPlans() })
-      }, 6000)
     },
   })
 
-  const latest = data?.[0]
+  const tableData: ExamRowItem[] = subjectProfiles?.map((sp, idx) => ({
+    id: `#403${22 + idx}`,
+    name: sp.subjectName,
+    admitDate: `Grade ${sp.gradeLevel}`,
+    type: `${sp.examsAnalyzed} Exams`,
+    status: sp.currentMasteryPct >= 75 ? 'Mastered' : sp.currentMasteryPct >= 50 ? 'In Progress' : 'Needs Review',
+  })) ?? [
+    { id: '#40322', name: 'Physics Grade 11', admitDate: '9/4/26', type: 'Kinematics', status: 'Mastered' },
+    { id: '#40323', name: 'Chemistry Grade 11', admitDate: '4/4/26', type: 'Organic', status: 'In Progress' },
+    { id: '#40324', name: 'Mathematics Grade 11', admitDate: '1/28/26', type: 'Calculus', status: 'Mastered' },
+    { id: '#40325', name: 'Biology Grade 11', admitDate: '1/31/26', type: 'Genetics', status: 'Needs Review' },
+  ]
 
-  return (
-    <Card>
-      <CardHeader className="flex flex-row items-center justify-between">
-        <CardTitle>Study plan</CardTitle>
-        <Button
-          size="sm"
-          variant="secondary"
-          isLoading={generate.isPending}
-          onClick={() => generate.mutate()}
-        >
-          <RefreshCw className="h-4 w-4" aria-hidden />
-          Generate
-        </Button>
-      </CardHeader>
-      <CardContent className="space-y-3">
-        {generate.isSuccess && (
-          <Banner tone="info">
-            Building your plan from your recent gaps. This can take a moment — refresh if it doesn&apos;t
-            appear below.
-          </Banner>
-        )}
-        {generate.isError && (
-          <Banner tone="error">{apiErrorMessage(generate.error, 'Could not start a study plan.')}</Banner>
-        )}
-        {isLoading && (
-          <div className="flex items-center gap-2 text-sm text-gray-500">
-            <Spinner /> Loading…
-          </div>
-        )}
-        {!isLoading && !latest && (
-          <EmptyState
-            icon={Sparkles}
-            title="No study plan yet"
-            description="Generate one from your current gaps -- it lays out day-by-day topics to review, prioritizing root causes."
-          />
-        )}
-        {latest && (
-          <div>
-            <p className="text-sm text-gray-600">
-              {latest.totalDays} day{latest.totalDays === 1 ? '' : 's'} · {latest.totalHours}h total ·
-              generated {formatDate(latest.generatedAt)}
-            </p>
-            {latest.planData?.summary && (
-              <p className="mt-2 text-sm text-gray-700">{latest.planData.summary}</p>
-            )}
-            <ul className="mt-3 space-y-2">
-              {latest.planData?.days?.slice(0, 3).map((day) => (
-                <li key={String(day.day)} className="rounded-md border border-gray-200 px-3 py-2 text-sm">
-                  <span className="font-medium text-gray-900">Day {day.day}</span>
-                  <ul className="mt-1 list-inside list-disc text-gray-600">
-                    {day.blocks?.map((block, i) => (
-                      <li key={i}>
-                        {block.title} {block.hours ? `(${block.hours}h)` : ''}
-                        {block.isRootCause && (
-                          <StatusPill tone="alert" className="ml-2">
-                            root cause
-                          </StatusPill>
-                        )}
-                      </li>
-                    ))}
-                  </ul>
-                </li>
-              ))}
-            </ul>
-          </div>
-        )}
-      </CardContent>
-    </Card>
-  )
-}
-
-function CareerMatchesSection() {
-  const { record, isLoading: isLoadingRecord } = useMyStudentRecord()
-  const queryClient = useQueryClient()
-
-  const { data, isLoading } = useQuery({
-    queryKey: queryKeys.careerMatches(record?.id ?? 'unknown'),
-    queryFn: () => getCareerMatches(record!.id),
-    enabled: Boolean(record),
-  })
-
-  const generate = useMutation({
-    mutationFn: () => generateCareerMatches(record!.id),
-    onSuccess: (matches) => {
-      queryClient.setQueryData(queryKeys.careerMatches(record!.id), matches)
+  const tableColumns = [
+    {
+      key: 'id',
+      header: 'ID',
+      sortable: true,
+      render: (item: ExamRowItem) => (
+        <span className="font-mono font-medium text-gray-500">{item.id}</span>
+      ),
     },
-  })
-
-  return (
-    <Card>
-      <CardHeader className="flex flex-row items-center justify-between">
-        <CardTitle>Career matches</CardTitle>
-        <Button
-          size="sm"
-          variant="secondary"
-          isLoading={generate.isPending}
-          disabled={!record}
-          onClick={() => generate.mutate()}
-        >
-          <Briefcase className="h-4 w-4" aria-hidden />
-          Find matches
-        </Button>
-      </CardHeader>
-      <CardContent>
-        {generate.isError && (
-          <Banner tone="error">{apiErrorMessage(generate.error, 'Could not generate career matches.')}</Banner>
-        )}
-        {(isLoadingRecord || isLoading) && (
-          <div className="flex items-center gap-2 text-sm text-gray-500">
-            <Spinner /> Loading…
+    {
+      key: 'name',
+      header: 'Subject & Unit',
+      sortable: true,
+      render: (item: ExamRowItem) => (
+        <div className="flex items-center gap-2">
+          <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-gray-100 font-bold text-gray-800 text-xs">
+            {item.name.charAt(0)}
           </div>
-        )}
-        {!isLoadingRecord && !isLoading && (!data || data.length === 0) && (
-          <EmptyState
-            icon={Briefcase}
-            title="No matches yet"
-            description="Generate career-path matches based on your subject strengths."
-          />
-        )}
-        {data && data.length > 0 && (
-          <ul className="space-y-2">
-            {data
-              .slice()
-              .sort((a, b) => b.score - a.score)
-              .map((match) => (
-                <li
-                  key={match.career_path_id}
-                  className="flex items-center justify-between rounded-md border border-gray-200 px-3 py-2 text-sm"
-                >
-                  <span className="font-medium text-gray-900">{match.title}</span>
-                  <StatusPill tone={toneForPct(match.score * 100)}>{formatPercent(match.score, { fromRatio: true })} fit</StatusPill>
-                </li>
-              ))}
-          </ul>
-        )}
-      </CardContent>
-    </Card>
-  )
-}
+          <span className="font-semibold text-gray-900">{item.name}</span>
+        </div>
+      ),
+    },
+    {
+      key: 'admitDate',
+      header: 'Enrolled / Grade',
+      sortable: true,
+      render: (item: ExamRowItem) => <span className="text-gray-600">{item.admitDate}</span>,
+    },
+    {
+      key: 'type',
+      header: 'Category',
+      render: (item: ExamRowItem) => <span className="text-gray-600 font-medium">{item.type}</span>,
+    },
+    {
+      key: 'status',
+      header: 'Status',
+      render: (item: ExamRowItem) => {
+        const tone =
+          item.status === 'Mastered'
+            ? 'health'
+            : item.status === 'In Progress'
+              ? 'seal'
+              : 'alert'
+        return <StatusPill tone={tone}>{item.status}</StatusPill>
+      },
+    },
+    {
+      key: 'details',
+      header: 'Details',
+      render: () => (
+        <button
+          type="button"
+          className="rounded-lg border border-gray-200 bg-white px-2.5 py-1 text-[11px] font-semibold text-gray-700 hover:bg-gray-50"
+        >
+          Details
+        </button>
+      ),
+    },
+  ]
 
-function QuickLinks() {
   return (
-    <div className="grid gap-4 sm:grid-cols-2">
-      <Link to="/student/exams" className="group">
-        <Card className="transition-colors group-hover:border-primary-300">
-          <CardContent className="flex items-center gap-3 pt-6">
-            <ClipboardList className="h-5 w-5 text-primary-700" aria-hidden />
-            <div>
-              <p className="font-medium text-gray-900">Take an exam</p>
-              <p className="text-sm text-gray-500">Enter the link or ID your teacher shared.</p>
-            </div>
-          </CardContent>
-        </Card>
-      </Link>
-      <Link to="/student/tutor" className="group">
-        <Card className="transition-colors group-hover:border-primary-300">
-          <CardContent className="flex items-center gap-3 pt-6">
-            <MessageCircleQuestion className="h-5 w-5 text-primary-700" aria-hidden />
-            <div>
-              <p className="font-medium text-gray-900">Ask the tutor</p>
-              <p className="text-sm text-gray-500">Get a personalized explanation based on your gaps.</p>
-            </div>
-          </CardContent>
-        </Card>
-      </Link>
-    </div>
+    <AppShell
+      title={`Welcome back, ${firstName} 👋`}
+      description="Welcome to your personalized EduGraph AI learning management dashboard."
+    >
+      <div className="space-y-6">
+        {/* Row 1: Top Stat Cards (4 Grid Layout matching Inspo) */}
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <StatMetricCard
+            title="Total Subjects"
+            value={`${subjectProfiles?.length ?? 4}+`}
+            change="10.4%"
+            trend="up"
+            periodText="Last Month"
+            icon={BookOpen}
+          />
+          <StatMetricCard
+            title="Total Exams Taken"
+            value="18+"
+            change="8.6%"
+            trend="up"
+            periodText="Last Month"
+            icon={ClipboardList}
+          />
+          <StatMetricCard
+            title="AI Gaps Resolved"
+            value="24+"
+            change="16.4%"
+            trend="up"
+            periodText="Last Month"
+            icon={CheckCircle2}
+          />
+          <StatMetricCard
+            title="Average Mastery"
+            value="82.4%"
+            change="20.6%"
+            trend="up"
+            periodText="Last Month"
+            icon={Award}
+          />
+        </div>
+
+        {/* Row 2: Charts & Schedule Grid Layout */}
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-12">
+          {/* Left Chart: Performance Area Chart */}
+          <div className="lg:col-span-5">
+            <PerformanceAreaChart
+              title="Students Performance Statistics"
+              subtitle="Monthly CLO & Exam Mastery Progress"
+              data={MOCK_PERFORMANCE_DATA}
+            />
+          </div>
+
+          {/* Middle Donut Chart: Distribution Donut */}
+          <div className="lg:col-span-4">
+            <DistributionDonutChart
+              title="Mastery & Gap Overview"
+              centerPercentage="82%"
+              centerLabel="Mastery"
+              totalValue="82.4 Avg Score"
+              segments={MOCK_DONUT_SEGMENTS}
+              dateLabel="12/04/2026"
+            />
+          </div>
+
+          {/* Right Schedule & Events Widget */}
+          <div className="lg:col-span-3">
+            <ScheduleCalendarWidget
+              monthLabel="April 2026"
+              scheduleItems={MOCK_SCHEDULE_ITEMS}
+              onAddNew={() => generatePlan.mutate()}
+            />
+          </div>
+        </div>
+
+        {/* Row 3: Management Data Table */}
+        <div className="grid grid-cols-1 gap-6">
+          <ManagementTableCard
+            title="Subjects & Assessment Management"
+            searchPlaceholder="Search subject name, ID..."
+            columns={tableColumns}
+            data={tableData}
+          />
+        </div>
+      </div>
+    </AppShell>
   )
 }

@@ -2,6 +2,7 @@ package config
 
 import (
 	"fmt"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -32,12 +33,26 @@ type PostgresConfig struct {
 	DB       string
 	User     string
 	Password string
+	SSLMode  string
 	MaxConns int32
 }
 
+// DSN builds a postgres:// connection string, percent-encoding user/
+// password via url.URL rather than raw fmt.Sprintf -- Supabase pooler
+// credentials commonly contain characters (@, ?, &) that would otherwise
+// be misparsed as URL delimiters (a literal @ in the password, for
+// instance, would be read as the userinfo/host separator).
 func (p PostgresConfig) DSN() string {
-	return fmt.Sprintf("postgres://%s:%s@%s:%s/%s?sslmode=disable",
-		p.User, p.Password, p.Host, p.Port, p.DB)
+	u := &url.URL{
+		Scheme: "postgres",
+		User:   url.UserPassword(p.User, p.Password),
+		Host:   fmt.Sprintf("%s:%s", p.Host, p.Port),
+		Path:   "/" + p.DB,
+	}
+	q := u.Query()
+	q.Set("sslmode", p.SSLMode)
+	u.RawQuery = q.Encode()
+	return u.String()
 }
 
 type Neo4jConfig struct {
@@ -91,6 +106,7 @@ func Load() Config {
 			DB:       getenv("POSTGRES_DB", "${POSTGRES_DB}"),
 			User:     getenv("POSTGRES_USER", "${POSTGRES_USER}"),
 			Password: getenv("POSTGRES_PASSWORD", "${POSTGRES_PASSWORD}"),
+			SSLMode:  getenv("POSTGRES_SSLMODE", "disable"),
 			MaxConns: int32(getenvInt("POSTGRES_MAX_CONNS", 20)),
 		},
 		Neo4j: Neo4jConfig{

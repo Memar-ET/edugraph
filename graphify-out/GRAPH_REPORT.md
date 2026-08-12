@@ -1,16 +1,16 @@
-# Graph Report - edugraph  (2026-07-20)
+# Graph Report - edugraph  (2026-08-11)
 
 ## Corpus Check
-- 394 files · ~113,183 words
+- 427 files · ~139,669 words
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
-- 2353 nodes · 3684 edges · 377 communities (269 shown, 108 thin omitted)
-- Extraction: 85% EXTRACTED · 15% INFERRED · 0% AMBIGUOUS · INFERRED: 546 edges (avg confidence: 0.8)
+- 2650 nodes · 4103 edges · 412 communities (302 shown, 110 thin omitted)
+- Extraction: 85% EXTRACTED · 15% INFERRED · 0% AMBIGUOUS · INFERRED: 600 edges (avg confidence: 0.8)
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `d32e614a`
+- Built from commit: `de9afd84`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
@@ -211,7 +211,9 @@
 - Shell Script: Dev Data
 - Shell Script: Dev Setup
 - V1 Routes Tutor
+- App Db Pgvector
 - Services Tutor Service
+- App Utils Embeddings
 - Step2 Curriculum Parsing
 - Service Requirements Asyncpg
 - Service Requirements Neo4j
@@ -221,7 +223,6 @@
 - Docker Compose Jaeger
 - Docker Compose Prometheus
 - Impl Plan: Plan Phase 5
-- Components Charts Index
 - Components Shared Index
 - Features Career Index
 - Features Ministry Index
@@ -247,23 +248,49 @@
 - tutor.go
 - @testing-library/jest-dom
 - curriculum handler.Upload — fixed wrong context key + double body-read bugs
-- repository.syncCurriculumGraph — MERGEs Subject/Unit/Topic + HAS_UNIT/HAS_TOPIC into Neo4j
 - ag-grid-community
 - UnsyncedGapRecord
 - autoprefixer
+- Struct
+- main
+- .PresignDownload
+- PostgresStorage
+- (:Topic) Neo4j node label
+- NewDriver
+- StudentQuestion
+- Run
+- Run
 - ag-grid-react
+- @testing-library/jest-dom
+- service.py
+- neo4j.py
+- service.py
+- answer_key_worker.py
+- exam_worker.py
+- main
+- @testing-library/jest-dom
+- versions.go
+- .ListTopicsBySubject
+- .ListTopicsBySubject
+- topic_list.go
+- @vitejs/plugin-react
+- vitest
+- @vitest/ui
+- .PresignDownload
+- .UploadAnswerKey
+- postcss
 
 ## God Nodes (most connected - your core abstractions)
-1. `WriteError()` - 87 edges
-2. `Internal()` - 84 edges
-3. `Table of Contents` - 67 edges
-4. `WriteJSON()` - 63 edges
-5. `BadRequest()` - 61 edges
-6. `unwrap()` - 36 edges
-7. `get_pool()` - 34 edges
-8. `NotFound()` - 33 edges
-9. `Struct()` - 27 edges
-10. `UserID()` - 21 edges
+1. `WriteError()` - 93 edges
+2. `Internal()` - 88 edges
+3. `WriteJSON()` - 69 edges
+4. `BadRequest()` - 67 edges
+5. `Table of Contents` - 67 edges
+6. `unwrap()` - 44 edges
+7. `get_pool()` - 38 edges
+8. `NotFound()` - 37 edges
+9. `Struct()` - 28 edges
+10. `UserID()` - 23 edges
 
 ## Surprising Connections (you probably didn't know these)
 - `Capability 1A — Curriculum Document Ingestion Pipeline` --semantically_similar_to--> `run_forever()`  [INFERRED] [semantically similar]
@@ -297,7 +324,7 @@
 - **Cross-Cutting Engineering Practices Spanning All Phases** — edugraph_impl_plan_cross_cutting_data_migration, edugraph_impl_plan_cross_cutting_multi_tenancy, edugraph_impl_plan_cross_cutting_api_versioning, edugraph_impl_plan_cross_cutting_testing_strategy, edugraph_impl_plan_cross_cutting_documentation [INFERRED 0.80]
 - **4-Step Dual-Storage Curriculum Ingestion Pipeline** — untitled_document_step_1_upload, untitled_document_step_2_brain_work, untitled_document_step_3_human_review, untitled_document_step_4_finalization [EXTRACTED 1.00]
 
-## Communities (377 total, 108 thin omitted)
+## Communities (412 total, 110 thin omitted)
 
 ### Community 0 - "Authresponse"
 Cohesion: 0.12
@@ -312,20 +339,20 @@ Cohesion: 0.70
 Nodes (4): DriverWithContext, Pool, Repository, New()
 
 ### Community 3 - "Ai Careermatchrequest"
-Cohesion: 0.06
-Nodes (36): CareerMatchRequest, CareerMatchResult, Client, TutorAskRequest, TutorAskResponse, Repository, Service, New() (+28 more)
+Cohesion: 0.09
+Nodes (25): CareerMatchRequest, CareerMatchResult, Client, TutorAskRequest, TutorAskResponse, Repository, Service, New() (+17 more)
 
 ### Community 4 - "Frontend: TS Config"
 Cohesion: 0.06
 Nodes (35): compilerOptions, allowImportingTsExtensions, baseUrl, isolatedModules, jsx, lib, module, moduleDetection (+27 more)
 
 ### Community 5 - "Curriculum Dto"
-Cohesion: 0.10
-Nodes (26): RawMessage, Time, UUID, ApproveResponse, Context, DriverWithContext, JobStatus, ParsedStructurePayload (+18 more)
+Cohesion: 0.11
+Nodes (31): RawMessage, Time, UUID, ApproveResponse, Context, DriverWithContext, JobStatus, ParsedStructurePayload (+23 more)
 
 ### Community 6 - "Parser Docx Extractor"
 Cohesion: 0.09
-Nodes (50): _build_units_topics_clos(), _extract_legacy(), extract_structure(), _group_clos_into_topics(), _heading_level(), _iter_block_items(), DOCX counterpart to extractor.py.  Word documents almost always carry proper par, Dict-based equivalent of extractor.py's _group_clos_into_topics --     groups CL (+42 more)
+Nodes (50): _build_units_topics_clos(), _extract_legacy(), extract_structure(), _group_clos_into_topics(), _heading_level(), _iter_block_items(), DOCX counterpart to extractor.py.  Tries the same "Unified ID Convention" plain-, Dict-based equivalent of extractor.py's _group_clos_into_topics --     groups CL (+42 more)
 
 ### Community 7 - "Teacher Dto"
 Cohesion: 0.03
@@ -340,12 +367,12 @@ Cohesion: 0.13
 Nodes (25): Capability 2A — Exam Upload and Parsing, Capability 2B — Exam Validation Report, Capability 2C — Student Answer Ingestion, Capability 3A — Gap Analysis Engine, Capability 3B — Study Plan Generator, Capability 3C — AI Tutor / Academic Assistant, Capability 3D — Career Recommendation Engine, Capability 4A — Class-Wide Gap Heatmap (+17 more)
 
 ### Community 10 - "Notification Dto"
-Cohesion: 0.15
-Nodes (15): Context, Pool, Repository, Row, Time, New(), scan(), Context (+7 more)
+Cohesion: 0.08
+Nodes (25): Context, JobListItem, Repository, UUID, Context, JobListItem, Service, UUID (+17 more)
 
 ### Community 11 - "Api Handlers"
-Cohesion: 0.05
-Nodes (44): DriverWithContext, main(), runMigrations(), splitStatements(), main(), getEnv(), main(), Context (+36 more)
+Cohesion: 0.28
+Nodes (11): getenv(), getenvInt(), Duration, Load(), AWSConfig, Config, JWTConfig, Neo4jConfig (+3 more)
 
 ### Community 12 - "DB Migration V011: updated curriculum"
 Cohesion: 0.24
@@ -353,27 +380,27 @@ Nodes (19): assessment.exam_attempts, assessment.exams, assessment.questions, as
 
 ### Community 13 - "Frontend: UI Kit Components"
 Cohesion: 0.09
-Nodes (23): Banner(), BannerProps, toneStyles, Button, ButtonProps, buttonVariants, Card(), CardContent() (+15 more)
+Nodes (25): Banner(), BannerProps, toneStyles, Button, ButtonProps, buttonVariants, Card(), CardContent() (+17 more)
 
 ### Community 14 - "Frontend: TS Config"
 Cohesion: 0.11
 Nodes (17): compilerOptions, allowImportingTsExtensions, esModuleInterop, isolatedModules, lib, module, moduleDetection, moduleResolution (+9 more)
 
 ### Community 15 - "App Db Postgres"
-Cohesion: 0.17
-Nodes (15): fetch_file_bytes(), fetch_job(), get_pool(), mark_failed(), mark_parsing(), Pool, Record, Postgres access layer for the curriculum-parsing worker.  Two tables matter here (+7 more)
+Cohesion: 0.15
+Nodes (16): close_pool(), fetch_file_bytes(), fetch_job(), get_pool(), mark_failed(), mark_parsing(), Pool, Record (+8 more)
 
 ### Community 16 - "Auth Repository"
-Cohesion: 0.25
-Nodes (10): AuthResponse, Context, Repository, Service, hashToken(), New(), nilIfEmpty(), toUserResponse() (+2 more)
+Cohesion: 0.10
+Nodes (26): AuthResponse, Time, Context, Pool, Repository, Row, Time, New() (+18 more)
 
 ### Community 17 - "Career Repository"
-Cohesion: 0.24
-Nodes (10): Context, DriverWithContext, Pool, Repository, Row, Time, New(), scanCareerPath() (+2 more)
+Cohesion: 0.11
+Nodes (22): Time, Context, DriverWithContext, Pool, Repository, Row, Time, New() (+14 more)
 
 ### Community 18 - "Notification Handler"
-Cohesion: 0.21
-Nodes (10): Handler, Request, ResponseWriter, Service, New(), FromRequest(), Request, NewMeta() (+2 more)
+Cohesion: 0.04
+Nodes (45): 1.1 Overview, 1.2 Design Aesthetics & Visual Tokens, 1. Curriculum Officer Dashboard (`/curriculum`), 1. Executive Summary & Design System Architecture, 1. School Admin Dashboard (`/` for Role `school_admin`), 1. Student Command Center (`/` for Role `student`), 1. Teacher Dashboard (`/` for Role `teacher`), 2.1 Core Stack Dependencies (+37 more)
 
 ### Community 19 - "Pkg Crypto Crypto"
 Cohesion: 0.24
@@ -388,8 +415,8 @@ Cohesion: 0.83
 Nodes (3): Handler, Service, New()
 
 ### Community 23 - "Student Repository"
-Cohesion: 0.18
-Nodes (18): handlers, Handler, Logger, newRouter(), Authenticate(), CORS(), Context, Handler (+10 more)
+Cohesion: 0.09
+Nodes (33): handlers, Handler, Logger, newRouter(), Context, Duration, Logger, Service (+25 more)
 
 ### Community 24 - "School Repository"
 Cohesion: 0.13
@@ -405,23 +432,23 @@ Nodes (14): AI Service (Python/FastAPI), API (Go), API_PROXY_TARGET routing fix,
 
 ### Community 27 - "Frontend: NPM Dependencies"
 Cohesion: 0.13
-Nodes (15): eslint, eslint-plugin-react-hooks, devDependencies, eslint, eslint-plugin-react-hooks, postcss, @typescript-eslint/eslint-plugin, @vitejs/plugin-react (+7 more)
+Nodes (15): autoprefixer, eslint, devDependencies, autoprefixer, eslint, msw, prettier, @types/dagre (+7 more)
 
 ### Community 28 - "Src Types Api"
-Cohesion: 0.03
-Nodes (69): AnswerInput, ApproveRequest, ApproveResponse, AuthResponse, BloomBalanceReport, BulkGradeRequest, BulkGradeResponse, CareerMatchResponse (+61 more)
+Cohesion: 0.02
+Nodes (82): AddPrerequisiteRequest, AddPrerequisiteResponse, AnswerInput, ApproveRequest, ApproveResponse, AuthResponse, BloomBalanceReport, BulkGradeRequest (+74 more)
 
 ### Community 29 - "Main Startup Event"
 Cohesion: 0.22
 Nodes (8): extract_questions(), DOCX counterpart to extractor.py (Capability 2A).  Exam DOCX files won't reliabl, _classify_question_type(), extract_questions(), _parse_lines(), Core "brain work" of exam PDF parsing (Capability 2A).  Unlike curriculum's PDF, Entry point: parses the PDF and returns a flat list of question dicts     ready, _section_type_hint()
 
 ### Community 30 - "Auth Handler"
-Cohesion: 0.41
-Nodes (6): decode(), Handler, Request, ResponseWriter, Service, New()
+Cohesion: 0.30
+Nodes (8): decode(), Handler, Request, ResponseWriter, Service, New(), As(), Struct()
 
 ### Community 31 - "Region Repository"
-Cohesion: 0.31
-Nodes (8): Context, Pool, Repository, Row, Time, New(), scanRegion(), Region
+Cohesion: 0.20
+Nodes (11): ComparePassword(), Duration, HashPassword(), loadPrivateKey(), loadPublicKey(), NewJWTSigner(), Claims, JWTSigner (+3 more)
 
 ### Community 32 - "Frontend: NPM Scripts"
 Cohesion: 0.14
@@ -440,12 +467,12 @@ Cohesion: 0.36
 Nodes (7): Time, CLOFlag, CLOCoverageQuality, CLOFlag, ExamQualityResponse, QuestionQuality, TimeAnalysisQuality
 
 ### Community 36 - "Frontend: API Client"
-Cohesion: 0.11
-Nodes (30): approveCurriculumJob(), askTutor(), bulkGradeExam(), generateCareerMatches(), generateStudyPlan(), getCareerMatches(), getCurriculumJob(), getExam() (+22 more)
+Cohesion: 0.08
+Nodes (41): addTopicPrerequisite(), approveCurriculumJob(), askTutor(), bulkGradeExam(), generateCareerMatches(), generateStudyPlan(), getCareerMatches(), getClassHeatmap() (+33 more)
 
 ### Community 37 - "Impl Plan Doc: The Fundamental Dependency Chain"
-Cohesion: 0.31
-Nodes (6): Context, Pool, ReadCloser, Reader, NewPostgresStorage(), PostgresStorage
+Cohesion: 0.28
+Nodes (7): asIntPtr(), Context, Record, Repository, SessionWithContext, SubjectGraph, runAndCollect()
 
 ### Community 38 - "Main Neo4jdriver Wiring"
 Cohesion: 0.06
@@ -464,24 +491,24 @@ Cohesion: 0.36
 Nodes (8): Context, Pool, Repository, Time, New(), scanLog(), CreateLogParams, SyncLog
 
 ### Community 42 - "Teacher Handler"
-Cohesion: 0.39
-Nodes (6): decode(), Handler, Request, ResponseWriter, Service, New()
+Cohesion: 0.29
+Nodes (10): decode(), Handler, Request, ResponseWriter, Service, New(), ResponseWriter, WriteError() (+2 more)
 
 ### Community 43 - "Frontend: App Router"
-Cohesion: 0.08
-Nodes (17): careerPathsRoute, examQualityRoute, examReviewRoute, examUploadRoute, gradeExamRoute, indexRoute, jobReviewRoute, loginRoute (+9 more)
+Cohesion: 0.07
+Nodes (21): careerPathsRoute, curriculumDashboardRoute, curriculumGraphRoute, curriculumVersionsRoute, examQualityRoute, examReviewRoute, examUploadRoute, gradeExamRoute (+13 more)
 
 ### Community 44 - "Cmd Api Main"
-Cohesion: 0.11
-Nodes (28): Handler, Request, ResponseWriter, Handler, Request, ResponseWriter, Handler, Request (+20 more)
+Cohesion: 0.33
+Nodes (6): Context, ExamInsight, ExamInsightListEntry, Service, SubjectProfile, UUID
 
 ### Community 45 - "Career Handler"
 Cohesion: 0.38
 Nodes (6): decode(), Handler, Request, ResponseWriter, Service, New()
 
 ### Community 46 - "Jobs Handler"
-Cohesion: 0.32
-Nodes (7): decode(), Handler, Request, ResponseWriter, Service, New(), Struct()
+Cohesion: 0.20
+Nodes (12): Handler, Request, ResponseWriter, decode(), Handler, Request, ResponseWriter, Service (+4 more)
 
 ### Community 47 - "Storage Dto"
 Cohesion: 0.11
@@ -489,7 +516,7 @@ Nodes (26): Context, Repository, UUID, computeBloomBalance(), computeCLOCoverage
 
 ### Community 48 - "Impl Plan Doc: (root)"
 Cohesion: 0.33
-Nodes (4): main(), EnsureDevKeyPair(), InitTracer(), TracerProvider
+Nodes (7): AddPrerequisiteRequest, AddPrerequisiteResponse, Context, PrerequisiteLink, Service, UUID, ResyncPrerequisitesResponse
 
 ### Community 49 - "Values Ai Service"
 Cohesion: 0.20
@@ -500,24 +527,24 @@ Cohesion: 0.24
 Nodes (7): Context, Repository, Service, New(), OverviewResponse, RegionStatsResponse, RegionStatsResponse
 
 ### Community 51 - "Storage Handler"
-Cohesion: 0.19
-Nodes (12): Handler, Request, ResponseWriter, decode(), Handler, Request, ResponseWriter, Service (+4 more)
+Cohesion: 0.39
+Nodes (5): Handler, Request, ResponseWriter, Service, New()
 
 ### Community 52 - "DB Design: Regions Regional Aggregates"
 Cohesion: 0.29
 Nodes (10): regions.regional_aggregates table, regions.regions table, regions schema, schools.quality_scores table, schools schema, schools.schools table, sync schema, sync.school_box_heartbeats table (+2 more)
 
 ### Community 53 - "DB Design Doc: (root)"
-Cohesion: 0.43
-Nodes (4): Context, PresignDownloadRequest, PresignResponse, PresignUploadRequest
+Cohesion: 0.27
+Nodes (10): Context, DriverWithContext, Pool, Repository, Row, Time, New(), scanStudent() (+2 more)
 
 ### Community 54 - "DB Design Doc: Node Labels And Properties"
-Cohesion: 0.83
-Nodes (3): Handler, Service, New()
+Cohesion: 0.39
+Nodes (5): Handler, Request, ResponseWriter, Service, New()
 
 ### Community 55 - "Frontend: NPM Dependencies"
 Cohesion: 0.22
-Nodes (9): clsx, dependencies, clsx, react, react-dom, tailwind-merge, react, react-dom (+1 more)
+Nodes (9): ag-grid-community, dependencies, ag-grid-community, @radix-ui/react-dialog, @radix-ui/react-tooltip, tailwind-merge, @radix-ui/react-dialog, @radix-ui/react-tooltip (+1 more)
 
 ### Community 56 - "Ministry Repository"
 Cohesion: 0.36
@@ -528,8 +555,8 @@ Cohesion: 0.25
 Nodes (10): derive_exam_scope(), derive_unit_numbers(), extract_docx_metadata_table(), extract_pdf_metadata_table(), parse_metadata_table(), Metadata-table extraction for the exam format that has a Subject/Grade Level/Exa, Normalizes the raw {subject, gradeLevel, examType, totalMarks} table     dict in, Scans the first few pages for a table with Subject/Grade Level/Exam     Type/Tot (+2 more)
 
 ### Community 59 - "DB Design: Design Curriculum Clos"
-Cohesion: 0.26
-Nodes (14): (:CLO) Neo4j node label, curriculum.clos table, curriculum schema, curriculum.subjects table, curriculum.topic_clo_mappings table, curriculum.topic_prerequisites table, curriculum.topics table, curriculum.units table (+6 more)
+Cohesion: 0.47
+Nodes (9): curriculum.clos table, curriculum schema, curriculum.subjects table, curriculum.topic_clo_mappings table, curriculum.topic_prerequisites table, curriculum.topics table, curriculum.units table, curriculum.upload_jobs table (+1 more)
 
 ### Community 60 - "DB Design: Audit Logs Bucket"
 Cohesion: 0.22
@@ -540,36 +567,36 @@ Cohesion: 0.12
 Nodes (20): Time, Context, Pool, Repository, Row, Time, New(), scanTeacher() (+12 more)
 
 ### Community 63 - "Ministry Handler"
-Cohesion: 0.23
-Nodes (12): Handler, Request, ResponseWriter, Service, New(), writeServiceError(), Handler, Request (+4 more)
+Cohesion: 0.17
+Nodes (13): Handler, Request, ResponseWriter, Handler, Request, ResponseWriter, Service, New() (+5 more)
 
 ### Community 64 - "Storage Repository"
 Cohesion: 0.39
 Nodes (5): Context, Duration, Repository, New(), PresignClient
 
 ### Community 65 - "Sync Handler"
-Cohesion: 0.05
-Nodes (34): brpop_job(), close_redis(), get_redis(), Redis access for the AI service.  The Go backend pushes a plain job id string on, Block for up to `timeout` seconds waiting for a job id on `queue`.     Returns N, process_answer_key_job(), Processes a separately-uploaded answer-key document (Capability 2C).  Real "Extr, process_exam_job() (+26 more)
+Cohesion: 0.17
+Nodes (9): Pass 3: LLM synthesis with Gemini (Capability 3A).  One request per analyzed att, gap_contexts: [{"index", "question_text", "symptom_topic",     "root_cause_topic, synthesize_insights(), _fallback_summary(), process_gap_job(), Capability 3A: The Granular Gap Analysis Engine ("Diagnostic Doctor").  Runs whe, Deterministic English summary when Gemini is unavailable -- the     Exam Insight, Consumes gap-analysis jobs off Redis (Capability 3A).  Mirrors exam_worker.py ex (+1 more)
 
 ### Community 66 - "Service"
-Cohesion: 0.12
-Nodes (20): Time, Context, DriverWithContext, Pool, Repository, Row, Time, New() (+12 more)
+Cohesion: 0.23
+Nodes (10): Time, Context, Repository, Service, New(), toResponse(), CreateStudentRequest, StudentResponse (+2 more)
 
 ### Community 67 - "DB Design: Assessment Exam Attempts"
 Cohesion: 0.46
 Nodes (8): assessment.exam_attempts table, assessment.exams table, assessment.questions table, assessment schema, assessment.student_answers table, (:Question) Neo4j node label, [:ASSESSES] relationship, [:PART_OF] relationship
 
 ### Community 68 - "DB Design: Audit Access Log"
-Cohesion: 0.25
-Nodes (9): audit.access_log table, audit.ai_request_log table, audit.data_change_log table, audit schema, embeddings.clo_embeddings table, embeddings.question_embeddings table, embeddings schema (pgvector), ministry.national_aggregates table (+1 more)
+Cohesion: 0.29
+Nodes (8): audit.access_log table, audit.ai_request_log table, audit.data_change_log table, audit schema, embeddings.clo_embeddings table, embeddings.question_embeddings table, embeddings schema (pgvector), Row-Level Security as last line of defence
 
 ### Community 69 - "DB Design: Identity Backup Codes"
-Cohesion: 0.43
-Nodes (7): identity.backup_codes table, identity.mfa_challenges table, identity schema, identity.sessions table, identity.users table, ministry.curriculum_change_log table, ministry schema
+Cohesion: 0.36
+Nodes (8): identity.backup_codes table, identity.mfa_challenges table, identity schema, identity.sessions table, identity.users table, ministry.curriculum_change_log table, ministry.national_aggregates table, ministry schema
 
 ### Community 70 - "Frontend: Curriculum Review UI"
-Cohesion: 0.36
-Nodes (4): IN_PROGRESS_STATUSES, JobReviewPage(), linesToList(), UploadPage()
+Cohesion: 0.09
+Nodes (24): CurriculumDashboardPage(), formatDate(), JobTableRow, MOCK_CURRICULUM_DONUT, MOCK_CURRICULUM_PERFORMANCE, MOCK_CURRICULUM_SCHEDULE, STATUS_LABEL, STATUS_TONE (+16 more)
 
 ### Community 71 - "CI Job: Ci Ai Test"
 Cohesion: 0.25
@@ -584,12 +611,12 @@ Cohesion: 0.39
 Nodes (5): Handler, Request, ResponseWriter, Service, New()
 
 ### Community 74 - "Service"
-Cohesion: 0.38
-Nodes (6): Context, Repository, Service, New(), toResponse(), RegionResponse
+Cohesion: 0.13
+Nodes (18): Time, Context, Pool, Repository, Row, Time, New(), scanRegion() (+10 more)
 
 ### Community 75 - "curriculum handler.Upload — fixed wrong context key + double body-read bugs"
-Cohesion: 0.11
-Nodes (19): apply_answer_key(), _clo_align_method(), fetch_exam_school(), fetch_valid_clo_codes(), mark_exam_failed(), mark_exam_parsing(), match_subject_code(), Postgres access layer for the exam-parsing worker (Capability 2A).  Mirrors app/ (+11 more)
+Cohesion: 0.09
+Nodes (24): apply_answer_key(), _clo_align_method(), fetch_clos_for_subject(), fetch_exam(), fetch_exam_school(), fetch_valid_clo_codes(), mark_exam_failed(), mark_exam_parsing() (+16 more)
 
 ### Community 76 - "autoprefixer"
 Cohesion: 0.32
@@ -605,23 +632,23 @@ Nodes (7): Bull MQ job queues (bull:*), Redis API response cache keys (cache:*),
 
 ### Community 83 - "App Core Config"
 Cohesion: 0.40
-Nodes (3): asyncpg connection string built from the individual settings above., Settings, BaseSettings
+Nodes (3): asyncpg connection string built from the individual settings above.         Use, Settings, BaseSettings
 
 ### Community 85 - "DB Design: Design Career Node"
 Cohesion: 0.50
 Nodes (5): (:Career) Neo4j node label, careers.career_topic_requirements table, careers.careers table, careers schema, [:REQUIRES] relationship
 
 ### Community 86 - "DB Design: Students Gap Records"
-Cohesion: 0.36
-Nodes (9): [:ANSWERED] relationship, [:MASTERED] relationship, [:STRUGGLED_WITH] relationship, (:Student) Neo4j node label, students.gap_records table, students.mastery_records table, students schema, students.student_profiles table (+1 more)
+Cohesion: 0.80
+Nodes (5): students.gap_records table, students.mastery_records table, students schema, students.student_profiles table, students.study_plans table
 
 ### Community 87 - "Frontend Package"
 Cohesion: 0.40
 Nodes (4): name, private, type, version
 
 ### Community 88 - "Repository"
-Cohesion: 0.19
-Nodes (11): Context, Repository, Tx, UUID, Context, Service, UUID, AddPrerequisiteRequest (+3 more)
+Cohesion: 0.30
+Nodes (7): Context, PrerequisiteLink, Repository, Tx, UUID, topicCore, UnsyncedPrerequisite
 
 ### Community 90 - ".SubmitExam"
 Cohesion: 0.39
@@ -648,8 +675,8 @@ Cohesion: 0.83
 Nodes (3): assessment_questions, assessment_results, assessments
 
 ### Community 96 - "Job"
-Cohesion: 0.25
-Nodes (10): Context, Pool, Repository, Row, Time, New(), scanUser(), CreateUserParams (+2 more)
+Cohesion: 0.09
+Nodes (11): DistributionDonutChartProps, DonutSegment, ManagementTableCardProps, TableColumn, ChartDataPoint, PerformanceAreaChartProps, WEEKLY_DATA, DEFAULT_DAYS (+3 more)
 
 ### Community 97 - "Lib Validations Curriculum"
 Cohesion: 0.50
@@ -668,12 +695,12 @@ Cohesion: 0.15
 Nodes (13): Context, Repository, Time, UUID, Context, Service, UUID, pct() (+5 more)
 
 ### Community 102 - "dto.go"
-Cohesion: 0.32
-Nodes (6): Context, Repository, UUID, GradingQuestion, QuestionOption, StudentQuestion
+Cohesion: 0.50
+Nodes (3): Time, UUID, JobListItem
 
 ### Community 103 - "ag-grid-react"
-Cohesion: 0.44
-Nodes (6): Conflict(), Forbidden(), New(), NotFound(), Wrap(), AppError
+Cohesion: 0.33
+Nodes (5): Context, Repository, SubjectVersion, Tx, subjectVersionCore
 
 ### Community 104 - "dto.go"
 Cohesion: 0.43
@@ -684,16 +711,12 @@ Cohesion: 0.36
 Nodes (7): AppHeader(), AppShell(), AppShellProps, getNavItems(), NavItem, ROLE_LABELS, NotificationBell()
 
 ### Community 122 - ".UploadAnswerKey"
-Cohesion: 0.33
-Nodes (5): Context, Reader, Service, UUID, UploadAnswerKeyResponse
+Cohesion: 0.50
+Nodes (4): AddPrerequisiteRequest, AddPrerequisiteResponse, PrerequisiteLink, ResyncPrerequisitesResponse
 
 ### Community 123 - "clo_matcher_llm.py"
 Cohesion: 0.50
 Nodes (3): match_clo_llm(), Gemini-backed CLO matcher (Capability 2A) -- an optional upgrade over clo_matche, clos: list of (code, description_en). Returns (best_code, confidence)     or (No
-
-### Community 124 - "ag-grid-community"
-Cohesion: 0.20
-Nodes (11): ComparePassword(), Duration, HashPassword(), loadPrivateKey(), loadPublicKey(), NewJWTSigner(), Claims, JWTSigner (+3 more)
 
 ### Community 125 - "eslint-plugin-react-hooks"
 Cohesion: 0.60
@@ -704,16 +727,12 @@ Cohesion: 0.13
 Nodes (18): compute_subject_aggregate(), fetch_attempt(), fetch_missed_answers(), fetch_prerequisite_chain_pg(), fetch_topic_mastery(), fetch_topics(), persist_analysis(), Record (+10 more)
 
 ### Community 127 - "Internal"
-Cohesion: 0.33
-Nodes (6): Context, ExamInsight, ExamInsightListEntry, Service, SubjectProfile, UUID
+Cohesion: 0.44
+Nodes (6): Conflict(), Forbidden(), New(), NotFound(), Wrap(), AppError
 
 ### Community 128 - "5.3 AI Capabilities"
 Cohesion: 0.33
 Nodes (6): 5.3.1 Exam Assessment Verifier, 5.3.2 Learning Gap Engine, 5.3.3 Study Plan Generator, 5.3.4 Career Recommendation Engine, 5.3.5 Policy Intelligence (Ministry), 5.3 AI Capabilities
-
-### Community 129 - "fetch_clos_for_subject"
-Cohesion: 0.40
-Nodes (5): fetch_clos_for_subject(), fetch_exam(), Record, Fetch the assessment.exams row a queued exam id points to., CLOs (code + description_en) for the keyword-based matcher in     clo_matcher.py
 
 ### Community 130 - "persist_analysis"
 Cohesion: 0.29
@@ -743,13 +762,21 @@ Nodes (4): 9.2.1 Role Hierarchy, 9.2.2 Row-Level Security Enforcement, 9.2.3 Neo
 Cohesion: 0.67
 Nodes (3): 10.2.1 Cache Layers, 10.2.2 Cache Invalidation, 10.2 Caching Strategy
 
+### Community 142 - "DB Migration V013: create local storage"
+Cohesion: 0.10
+Nodes (31): Handler, Request, ResponseWriter, Handler, Request, ResponseWriter, Handler, Request (+23 more)
+
 ### Community 147 - "Claude"
-Cohesion: 0.25
-Nodes (7): Architecture, Critical Decisions, Database Structure, Development Rules, graphify, Important Files, Key Components — The Curriculum Pipeline (Phase 1)
+Cohesion: 0.15
+Nodes (12): Architecture, Critical Decisions, Database Structure, Development Rules, Important Files, Key Components — The Curriculum Pipeline (Phase 1), Known Gaps / Incomplete Work, New finding: `ApproveAndPromote` is slow over Supabase for a full grade, and the Vite dev proxy hides it as a false 500 (+4 more)
 
 ### Community 148 - "Frontend: NPM Dependencies"
 Cohesion: 0.40
 Nodes (4): Context, Repository, StudyPlan, UUID
+
+### Community 150 - "Frontend: NPM Dependencies"
+Cohesion: 0.25
+Nodes (9): (:CLO) Neo4j node label, [:ANSWERED] relationship, [:HAS_SUBTOPIC] relationship, [:MAPS_TO_CLO] relationship, [:MASTERED] relationship, [:PREREQUISITE_OF] relationship, [:STRUGGLED_WITH] relationship, (:Student) Neo4j node label (+1 more)
 
 ### Community 152 - "9.1 Authentication"
 Cohesion: 0.67
@@ -759,37 +786,65 @@ Nodes (3): 9.1.1 JWT + OAuth 2.0 / OpenID Connect, 9.1.2 Multi-Factor Authentica
 Cohesion: 0.32
 Nodes (7): fetch_candidate_topics(), fetch_gap_context(), fetch_student(), Record, Postgres access layer for the AI tutor (Capability 3C).  Retrieval side of the G, Topics the question could be about. Grade-scoped to the student's     grade AND, The student's unresolved gaps touching the matched topics -- as     symptom OR r
 
-### Community 173 - "autoprefixer"
-Cohesion: 0.33
-Nodes (6): Time, AuthResponse, LoginRequest, RefreshRequest, RegisterRequest, UserResponse
+### Community 158 - "Frontend: NPM Dependencies"
+Cohesion: 0.67
+Nodes (3): getEnv(), main(), DemoUser
+
+### Community 163 - "Frontend: NPM Dependencies"
+Cohesion: 0.32
+Nodes (6): _clo(), extract_grade(), Shared strategy for documents following the "Unified ID Convention" curriculum f, Splits the whole document into logical lines on marker boundaries     (not on ra, Extracts one grade's units/topics/subtopics/CLOs, ignoring every     other grade, _tokenize()
+
+### Community 172 - "Frontend: NPM Dependencies"
+Cohesion: 0.83
+Nodes (3): GraphEdge, GraphNode, SubjectGraph
+
+### Community 174 - "Frontend: NPM Dependencies"
+Cohesion: 0.50
+Nodes (3): Context, Service, SubjectGraph
+
+### Community 182 - "Frontend: NPM Dependencies"
+Cohesion: 0.32
+Nodes (6): Context, Repository, UUID, GradingQuestion, QuestionOption, StudentQuestion
 
 ### Community 216 - "V1 Routes Tutor"
-Cohesion: 0.10
-Nodes (22): ask_tutor(), AskRequest, POST /api/v1/tutor/ask (Capability 3C) -- called by the Go API's tutor proxy (in, close_neo4j(), fetch_prerequisite_chain(), fetch_prerequisite_edges_among(), get_driver(), Neo4j access for the AI service (Capability 3A: root-cause traversal).  The Go s (+14 more)
+Cohesion: 0.28
+Nodes (6): ask_tutor(), AskRequest, POST /api/v1/tutor/ask (Capability 3C) -- called by the Go API's tutor proxy (in, lifespan(), BaseModel, FastAPI
+
+### Community 220 - "App Db Pgvector"
+Cohesion: 0.21
+Nodes (11): fetch_clo_text(), fetch_topic_text(), Read/write helpers for the embeddings.* schema (CLO/topic embeddings).  Kept sep, Text to embed for a curriculum.topics row, or None if it doesn't exist., Text to embed for a curriculum.clos row, or None if it doesn't exist., _to_vector_literal(), upsert_clo_embedding(), upsert_topic_embedding() (+3 more)
 
 ### Community 240 - "Services Tutor Service"
 Cohesion: 0.20
 Nodes (10): Context, Repository, UUID, Context, HeatmapAlert, Service, UUID, ClassHeatmapResponse (+2 more)
 
-### Community 278 - "Components Charts Index"
-Cohesion: 0.40
-Nodes (4): Time, CreateRegionRequest, RegionResponse, UpdateRegionRequest
+### Community 241 - "App Utils Embeddings"
+Cohesion: 0.33
+Nodes (6): ABC, EmbeddingProvider, get_embedding_provider(), Pluggable embedding provider for the CLO/topic embedding pipeline (app/workers/e, Return an EMBEDDING_DIM-length vector for `text`., StubEmbeddingProvider
 
 ### Community 281 - "Features Career Index"
 Cohesion: 0.50
 Nodes (3): CareerPathsPage(), createCareerPath(), listCareerPaths()
 
 ### Community 282 - "Features Ministry Index"
-Cohesion: 0.50
-Nodes (3): MinistryDashboardPage(), getMinistryOverview(), listRegions()
+Cohesion: 0.25
+Nodes (7): MinistryDashboardPage(), MOCK_MINISTRY_DONUT, MOCK_MINISTRY_PERFORMANCE, MOCK_MINISTRY_SCHEDULE, RegionRowItem, getMinistryOverview(), listRegions()
+
+### Community 283 - "Features Regional Index"
+Cohesion: 0.25
+Nodes (4): MOCK_REGIONAL_DONUT, MOCK_REGIONAL_PERFORMANCE, MOCK_REGIONAL_SCHEDULE, RegionalDashboardPage()
 
 ### Community 284 - "School Admin Index"
-Cohesion: 0.33
-Nodes (3): NotifySection(), SchoolAdminDashboardPage(), createNotification()
+Cohesion: 0.22
+Nodes (6): MOCK_SCHOOL_DONUT, MOCK_SCHOOL_PERFORMANCE, MOCK_SCHOOL_SCHEDULE, NotifySection(), SchoolAdminDashboardPage(), createNotification()
 
 ### Community 285 - "Features Student Index"
-Cohesion: 0.19
-Nodes (9): CareerMatchesSection(), StudentDashboardPage(), StudyPlanSection(), SubjectHealthSection(), ChatTurn, TutorPage(), useMyStudentRecord(), getMySubjectProfiles() (+1 more)
+Cohesion: 0.20
+Nodes (9): ExamRowItem, MOCK_DONUT_SEGMENTS, MOCK_PERFORMANCE_DATA, MOCK_SCHEDULE_ITEMS, StudentDashboardPage(), ChatTurn, MARKDOWN_COMPONENTS, TutorPage() (+1 more)
+
+### Community 286 - "Features Teacher Index"
+Cohesion: 0.29
+Nodes (6): MOCK_EXAM_ROWS, MOCK_TEACHER_DONUT, MOCK_TEACHER_PERFORMANCE, MOCK_TEACHER_SCHEDULE, TeacherDashboardPage(), TeacherExamRow
 
 ### Community 288 - "Lib Utils Date"
 Cohesion: 0.70
@@ -815,6 +870,78 @@ Nodes (3): Time, CreateNotificationRequest, NotificationResponse
 Cohesion: 0.39
 Nodes (4): Context, Repository, UUID, UnsyncedGapRecord
 
+### Community 376 - "Struct"
+Cohesion: 0.18
+Nodes (13): Handler, Request, ResponseWriter, Handler, Request, ResponseWriter, decode(), Handler (+5 more)
+
+### Community 377 - "main"
+Cohesion: 0.18
+Nodes (7): main(), main(), EnsureDevKeyPair(), Pool, NewPool(), InitTracer(), TracerProvider
+
+### Community 378 - ".PresignDownload"
+Cohesion: 0.83
+Nodes (3): Repository, Service, New()
+
+### Community 379 - "PostgresStorage"
+Cohesion: 0.31
+Nodes (6): Context, Pool, ReadCloser, Reader, NewPostgresStorage(), PostgresStorage
+
+### Community 382 - "(:Topic) Neo4j node label"
+Cohesion: 0.60
+Nodes (3): Context, Service, SubjectVersion
+
+### Community 383 - "NewDriver"
+Cohesion: 0.32
+Nodes (6): DriverWithContext, main(), runMigrations(), splitStatements(), DriverWithContext, NewDriver()
+
+### Community 385 - "Run"
+Cohesion: 0.20
+Nodes (8): brpop_job(), close_redis(), get_redis(), Redis access for the AI service.  The Go backend pushes a plain job id string on, Block for up to `timeout` seconds waiting for a job id on `queue`.     Returns N, Consumes study-plan generation jobs off Redis (Capability 3B).  Same BRPOP loop, run_forever(), Redis
+
+### Community 389 - "service.py"
+Cohesion: 0.29
+Nodes (9): _aggregate_topics(), _pack_days(), _plan_summary(), process_study_plan_job(), Capability 3B: The Study Plan Generator ("Personal Tutor").  Input is the rich 3, Kahn's algorithm over prerequisite edges among the study topics.     Ready set i, Greedy day packing at HOURS_PER_DAY: small topics share a day, a     big topic s, Collapse gap records into per-topic study entries. A topic can appear     as a s (+1 more)
+
+### Community 390 - "neo4j.py"
+Cohesion: 0.31
+Nodes (8): close_neo4j(), fetch_prerequisite_chain(), fetch_prerequisite_edges_among(), get_driver(), Neo4j access for the AI service (Capability 3A: root-cause traversal).  The Go s, Walk backwards up the prerequisite graph from a symptom topic:     every (:Topic, All direct HAS_PREREQUISITE edges whose BOTH endpoints are in     topic_ids -- t, AsyncDriver
+
+### Community 391 - "service.py"
+Cohesion: 0.39
+Nodes (7): ask(), Capability 3C: The AI Tutor (Graph-RAG + Gemini).  When a student asks a questio, Raised when GEMINI_API_KEY is unset or the model call fails., _score_topic(), _tokenize(), TutorUnavailable, Exception
+
+### Community 392 - "answer_key_worker.py"
+Cohesion: 0.29
+Nodes (4): process_answer_key_job(), Processes a separately-uploaded answer-key document (Capability 2C).  Real "Extr, Consumes answer-key upload jobs off Redis (Capability 2C).  Mirrors curriculum_w, run_forever()
+
+### Community 393 - "exam_worker.py"
+Cohesion: 0.29
+Nodes (4): process_exam_job(), Orchestrates one exam-parsing job end to end (Capability 2A):    1. Fetch the ex, Consumes exam-upload jobs off Redis and parses them (Capability 2A).  Mirrors cu, run_forever()
+
+### Community 394 - "main"
+Cohesion: 0.43
+Nodes (6): graphErrSuffix(), main(), ingestFile, ingestJob, prereqEdge, ParsedUnit
+
+### Community 397 - "versions.go"
+Cohesion: 0.50
+Nodes (3): Time, SubjectVersion, SupersedeRequest
+
+### Community 398 - ".ListTopicsBySubject"
+Cohesion: 0.50
+Nodes (3): Context, Repository, TopicListItem
+
+### Community 399 - ".ListTopicsBySubject"
+Cohesion: 0.50
+Nodes (3): Context, Service, TopicListItem
+
+### Community 409 - ".PresignDownload"
+Cohesion: 0.43
+Nodes (4): Context, PresignDownloadRequest, PresignResponse, PresignUploadRequest
+
+### Community 410 - ".UploadAnswerKey"
+Cohesion: 0.33
+Nodes (5): Context, Reader, Service, UUID, UploadAnswerKeyResponse
+
 ## Ambiguous Edges - Review These
 - `AI Service (Python/FastAPI)` → `Ollama (LLM)`  [AMBIGUOUS]
   docker-compose.yml · relation: semantically_similar_to
@@ -826,9 +953,9 @@ Nodes (4): Context, Repository, UUID, UnsyncedGapRecord
   graphify-out/converted/Untitled document_d184c67f.md · relation: not_applicable_to
 
 ## Knowledge Gaps
-- **442 isolated node(s):** `users`, `students`, `teachers`, `notifications`, `sync_logs` (+437 more)
+- **550 isolated node(s):** `users`, `students`, `teachers`, `notifications`, `sync_logs` (+545 more)
   These have ≤1 connection - possible missing edges or undocumented components.
-- **108 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
+- **110 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
 
 ## Suggested Questions
 _Questions this graph is uniquely positioned to answer:_
@@ -841,9 +968,9 @@ _Questions this graph is uniquely positioned to answer:_
   _Edge tagged AMBIGUOUS (relation: conceptually_related_to) - confidence is low._
 - **What is the exact relationship between `Step 4: The Finalization (Go API → PostgreSQL → Neo4j)` and `StorageProvider Interface / Dual-Storage System`?**
   _Edge tagged AMBIGUOUS (relation: not_applicable_to) - confidence is low._
-- **Why does `Internal()` connect `Cmd Api Main` to `Authresponse`, `Architecture Doc: (root)`, `Ai Careermatchrequest`, `Notification Dto`, `Auth Repository`, `Sync Dto`, `Storage Dto`, `Ministry Dto`, `DB Design Doc: (root)`, `redis.py`, `Ministry Handler`, `Service`, `Service`, `autoprefixer`, `ag-grid-community`, `Repository`, `.UploadExam`, `Internal`, `.AskTutor`, `logger.go`, `Run`, `ag-grid-react`, `Services Tutor Service`, `.UploadAnswerKey`, `Internal`?**
-  _High betweenness centrality (0.113) - this node is a cross-community bridge._
-- **Why does `WriteError()` connect `Ministry Handler` to `Region Handler`, `School Handler`, `Student Handler`, `dto.go`, `Teacher Handler`, `Cmd Api Main`, `Career Handler`, `Jobs Handler`, `Notification Handler`, `Storage Handler`, `Student Repository`, `.UploadExam`, `Auth Handler`?**
-  _High betweenness centrality (0.040) - this node is a cross-community bridge._
-- **Why does `NotFound()` connect `ag-grid-react` to `Authresponse`, `Architecture Doc: (root)`, `Service`, `Ai Careermatchrequest`, `logger.go`, `Curriculum Dto`, `Run`, `Service`, `Notification Dto`, `ag-grid-community`, `Storage Dto`, `Services Tutor Service`, `Auth Repository`, `Repository`, `.UploadAnswerKey`, `Internal`, `redis.py`, `Internal`?**
-  _High betweenness centrality (0.019) - this node is a cross-community bridge._
+- **Why does `Internal()` connect `DB Migration V013: create local storage` to `Authresponse`, `Architecture Doc: (root)`, `Notification Dto`, `Auth Repository`, `Career Repository`, `.PresignDownload`, `Sync Dto`, `.UploadAnswerKey`, `Teacher Handler`, `Cmd Api Main`, `Jobs Handler`, `Storage Dto`, `Impl Plan Doc: (root)`, `Ministry Dto`, `redis.py`, `Ministry Handler`, `Service`, `Service`, `autoprefixer`, `ag-grid-community`, `.UploadExam`, `Internal`, `.AskTutor`, `logger.go`, `Run`, `Services Tutor Service`, `Internal`?**
+  _High betweenness centrality (0.085) - this node is a cross-community bridge._
+- **Why does `WriteError()` connect `Teacher Handler` to `Region Handler`, `School Handler`, `Student Handler`, `dto.go`, `Career Handler`, `Jobs Handler`, `DB Migration V013: create local storage`, `Storage Handler`, `DB Design Doc: Node Labels And Properties`, `Student Repository`, `Struct`, `.UploadExam`, `Auth Handler`, `Ministry Handler`?**
+  _High betweenness centrality (0.025) - this node is a cross-community bridge._
+- **Why does `NotFound()` connect `Internal` to `Authresponse`, `Architecture Doc: (root)`, `Ai Careermatchrequest`, `Curriculum Dto`, `Notification Dto`, `Auth Repository`, `.UploadAnswerKey`, `Impl Plan Doc: The Fundamental Dependency Chain`, `Cmd Api Main`, `Storage Dto`, `Impl Plan Doc: (root)`, `redis.py`, `Service`, `Service`, `ag-grid-community`, `Internal`, `logger.go`, `Run`, `ag-grid-react`, `Services Tutor Service`?**
+  _High betweenness centrality (0.016) - this node is a cross-community bridge._
