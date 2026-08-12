@@ -1,7 +1,15 @@
 """
 Core "brain work" of curriculum PDF parsing.
 
-Two heading-detection strategies, tried in order:
+Three strategies, tried in order:
+  0) ID convention  -- if the document matches the "Unified ID Convention"
+                        plain-text format (id_convention.py; e.g. the
+                        Ethiopian MoE Biology syllabus), that dedicated
+                        parser handles the whole document -- it isn't
+                        table-driven or heading-hierarchy-driven the way
+                        strategies A/B below are, so it needs its own
+                        detect-and-route step ahead of them, not a tweak
+                        to either.
   A) TOC strategy   -- if the PDF has an embedded Table of Contents,
                         use it as the exact skeleton.
   B) Font heuristic -- otherwise, cluster heading candidates by font
@@ -51,6 +59,8 @@ from dataclasses import dataclass, field
 from typing import Optional
 
 import fitz  # PyMuPDF
+
+from app.services.curriculum_parser import id_convention
 
 BOLD_FLAG = 1 << 4  # PyMuPDF span flag bit for bold text
 
@@ -147,6 +157,21 @@ def extract_structure(
     warnings: list[str] = []
     doc = fitz.open(stream=pdf_bytes, filetype="pdf")
     try:
+        # Strategy 0: "Unified ID Convention" format (see id_convention.py)
+        # -- plain-text-shaped with a strict dot-separated ID prefix per
+        # line (e.g. "G9.U2.T2.2.CLO1: ..."), not table-driven and not
+        # heading-hierarchy-driven the way the other strategies below are,
+        # so it needs to be detected and routed before either of them runs.
+        # The source document can (and for the Ethiopian MoE Biology
+        # syllabus, does) bundle several grades and a prerequisites
+        # appendix in one file; id_convention.extract_grade scopes to just
+        # the requested grade_level and ignores the rest.
+        full_text = "\n".join(doc[p].get_text() for p in range(doc.page_count))
+        if id_convention.looks_like_id_convention(full_text):
+            result = id_convention.extract_grade(full_text, grade_level, subject_code, academic_year)
+            result["pageCount"] = doc.page_count
+            return result
+
         headings, base_strategy = _find_headings(doc, warnings)
         section_start, section_end = _locate_units_topics_clos_section(headings)
 

@@ -1,6 +1,14 @@
 """
 DOCX counterpart to extractor.py.
 
+Tries the same "Unified ID Convention" plain-text strategy first
+(id_convention.py, shared with the PDF path -- format-agnostic, since it
+operates on a flattened text blob either way), before falling back to the
+heading-style-driven strategies below. Confirmed by direct inspection
+that both this document's PDF and DOCX exports carry the identical
+Grade-9/10 leaked-Markdown-marker defect, so the same defensive
+tokenization handles both without a DOCX-specific fixup.
+
 Word documents almost always carry proper paragraph styles ("Heading 1",
 "Heading 2", ...), which is a much more reliable structural signal than
 font-size guessing -- effectively the DOCX equivalent of a PDF's table of
@@ -47,6 +55,7 @@ from docx.oxml.ns import qn
 from docx.table import Table
 from docx.text.paragraph import Paragraph
 
+from app.services.curriculum_parser import id_convention
 from app.services.curriculum_parser.extractor import (
     SECTION_HEADING_RE,
     TOPICS_MARKER_RE,
@@ -138,6 +147,15 @@ def extract_structure(
     academic_year: str,
 ) -> dict:
     document = docx.Document(io.BytesIO(docx_bytes))
+
+    # Strategy 0: "Unified ID Convention" format -- see id_convention.py
+    # and the module docstring above. Checked first since it's neither
+    # table-driven nor heading-hierarchy-driven, so it isn't something
+    # the strategies below would ever detect on their own.
+    full_text = "\n".join(p.text for p in document.paragraphs if p.text.strip())
+    if id_convention.looks_like_id_convention(full_text):
+        return id_convention.extract_grade(full_text, grade_level, subject_code, academic_year)
+
     warnings: list[str] = []
     blocks = _tokenize(document)
 

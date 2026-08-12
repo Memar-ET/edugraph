@@ -8,11 +8,11 @@ from app.core.logging import configure_logging
 from app.db.neo4j import close_neo4j
 from app.db.postgres import close_pool
 from app.db.redis import close_redis
-from app.workers import answer_key_worker, curriculum_worker, exam_worker, gap_worker, study_plan_worker
+from app.workers import answer_key_worker, curriculum_worker, embed_worker, exam_worker, gap_worker, study_plan_worker
 
 logger = configure_logging()
 
-WORKERS = (curriculum_worker, exam_worker, answer_key_worker, gap_worker, study_plan_worker)
+WORKERS = (curriculum_worker, exam_worker, answer_key_worker, gap_worker, study_plan_worker, embed_worker)
 
 
 @asynccontextmanager

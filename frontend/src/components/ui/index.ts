@@ -8,3 +8,5 @@ export { Spinner } from './spinner'
 export { Seal, type SealProps } from './seal'
 export { StatusPill, toneForPct, type StatusPillProps } from './status-pill'
 export { EmptyState, type EmptyStateProps } from './empty-state'
+export { ThreeDCard, type ThreeDCardProps } from './ThreeDCard'
+
