@@ -10,16 +10,18 @@ attempt id onto queue:gap:analyze from SubmitExam / BulkGradeExam):
   Pass 2 -- Root Cause Traversal (the "where"): walk backwards up the
   prerequisite graph from each symptom topic (Neo4j HAS_PREREQUISITE
   first, falling back to Postgres curriculum.topic_prerequisites -- see
-  app/db/neo4j.py for why both are empty today) and find the deepest
-  prerequisite the student has EVIDENCE of being weak in (< WEAK_THRESHOLD
-  mastery across their graded answer history / mastery_records). No
-  evidence is not weakness: a prerequisite the student was never assessed
-  on is never blamed.
+  app/db/neo4j.py for the write path and current population status) and
+  find the deepest prerequisite the student has EVIDENCE of being weak in
+  (< WEAK_THRESHOLD mastery across their graded answer history /
+  mastery_records). No evidence is not weakness: a prerequisite the
+  student was never assessed on is never blamed.
 
-  Pass 3 -- LLM Synthesis (the "why"): one Gemini call turns the
-  symptom/root-cause pairs into per-gap explanations plus an exam-level
-  narrative (English + Amharic), with a deterministic English fallback so
-  exam_insights always gets a summary even with no GEMINI_API_KEY.
+  Pass 3 -- LLM Synthesis (the "why"): one call turns the symptom/root-cause
+  pairs into per-gap explanations plus an exam-level narrative (English +
+  Amharic) -- Gemini first, falling back to a local Ollama model when
+  Gemini is unset/unreachable (see gap_analysis/llm.py), with a
+  deterministic English fallback so exam_insights always gets a summary
+  even when neither LLM tier is available.
 
 Storage: gap_records (granular), exam_insights (per attempt),
 subject_profiles (rolling subject health) + mastery_records refresh, all
@@ -28,13 +30,11 @@ in one transaction (postgres_gap.persist_analysis).
 
 from __future__ import annotations
 
-from typing import Optional
-
 import structlog
 
 from app.db import neo4j as neo4j_db
 from app.db import postgres_gap as db
-from app.services.gap_analysis.llm import GEMINI_MODEL, MAX_GAPS_TO_EXPLAIN, synthesize_insights
+from app.services.gap_analysis.llm import MAX_GAPS_TO_EXPLAIN, synthesize_insights
 
 logger = structlog.get_logger()
 
@@ -148,7 +148,7 @@ async def process_gap_job(attempt_id: str) -> None:
         for i in to_explain
     ]
 
-    explanations, summary = await synthesize_insights(
+    explanations, summary, llm_model = await synthesize_insights(
         exam_title=attempt["exam_title"],
         exam_scope=attempt["exam_scope"],
         subject_code=attempt["subject_code"],
@@ -156,7 +156,6 @@ async def process_gap_job(attempt_id: str) -> None:
         percentage=float(attempt["percentage"]) if attempt["percentage"] is not None else None,
         gap_contexts=gap_contexts,
     )
-    llm_model: Optional[str] = GEMINI_MODEL if (explanations or summary) else None
     if explanations:
         for i, text in explanations.items():
             if 0 <= i < len(gaps):

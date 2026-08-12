@@ -31,6 +31,11 @@ class Settings(BaseSettings):
     # ── AI SERVICE ───────────────────────────
     AI_SERVICE_URL: str = "ai-service:8000"
     OLLAMA_HOST: str = "ollama:11434"
+    # Capability 3A offline fallback: tried when Gemini is unset/unreachable,
+    # before falling back further to the deterministic English summary (see
+    # gap_analysis/llm.py). Matches the model already referenced in
+    # school-box/compose/docker-compose.yml's ollama service comment.
+    OLLAMA_MODEL: str = "qwen2.5:7b-instruct-q4_K_M"
     EMBEDDING_MODEL: str = "intfloat/multilingual-e5-large"
     # Must match this model's real output width -- see
     # db/migrations/V028__fix_embedding_dimensions.sql. Checked defensively
