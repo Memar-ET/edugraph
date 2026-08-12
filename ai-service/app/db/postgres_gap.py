@@ -8,9 +8,12 @@ exam_insights, subject_profiles) plus mastery_records in one transaction.
 
 Prerequisite traversal: the primary walk is Neo4j (app/db/neo4j.py, per
 the graph-first design); fetch_prerequisite_chain_pg here is the
-system-of-record fallback over curriculum.topic_prerequisites -- both are
-empty today (nothing populates prerequisites yet), and both callers treat
-"no chain" as normal, not an error.
+system-of-record fallback over curriculum.topic_prerequisites. Both are
+populated together by POST /curriculum/topics/:id/prerequisites (see
+app/db/neo4j.py's docstring) -- as of this writing nobody has used that
+endpoint yet, so both are empty in practice, but the write path exists.
+Both callers treat "no chain" as normal, not an error, since a partially
+(or not yet) populated graph is an expected ongoing state.
 """
 
 from __future__ import annotations
