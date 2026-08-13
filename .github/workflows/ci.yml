@@ -101,10 +101,15 @@ jobs:
         working-directory: backend
         run: go mod download
 
+      # checklist 12.4: real tests exist now (internal/testutil applies
+      # every migration itself against the postgres service container
+      # above, then internal/auth/student/teacher/career/assessment and
+      # curriculum have real integration tests) -- a failure here must
+      # fail the build, not get swallowed.
       - name: Run unit tests
         if: steps.check.outputs.go_files > 0
         working-directory: backend
-        run: go test -race -coverprofile=coverage.out ./internal/... ./pkg/... 2>/dev/null || echo "No test files yet"
+        run: go test -race -coverprofile=coverage.out ./internal/... ./pkg/...
         env:
           POSTGRES_HOST: localhost
           POSTGRES_PORT: 5432
@@ -114,7 +119,12 @@ jobs:
           NEO4J_URI: bolt://localhost:7687
           NEO4J_USER: neo4j
           NEO4J_PASSWORD: testpass
-          REDIS_URL: redis:6379
+          # localhost, not the service name "redis" -- this job doesn't
+          # run inside a container (no `container:` key), so service
+          # containers are only reachable via their mapped host port,
+          # same as postgres/neo4j above. Pre-existing bug, found while
+          # wiring this job to actually enforce test results.
+          REDIS_URL: localhost:6379
 
       - name: Skip — no Go source files yet
         if: steps.check.outputs.go_files == 0
@@ -163,11 +173,152 @@ jobs:
       - name: Install and test
         working-directory: frontend
         # vitest exits non-zero when no test files exist yet -- tolerate
-        # that until the first *.test.tsx lands, same philosophy as the
-        # other activate-when-ready checks in this workflow.
+        # that until the first *.test.tsx (component/unit test) lands.
+        # Not the same gap as checklist 12.3's "no tests" finding: that
+        # was end-to-end coverage specifically, now real via Playwright
+        # -- see the frontend-e2e job below, which does enforce.
         run: |
           npm ci
-          npm test || echo "No tests yet"
+          npm test || echo "No unit tests yet"
+
+  # checklist 12.3/12.4: real, enforced E2E coverage (login, exam-taking,
+  # exam review) against the actual running stack -- the real api
+  # binary, real Postgres/Neo4j/Redis, real Vite dev server, a real
+  # browser. Not mocked at any layer; this is deliberately a separate job
+  # from frontend-test (vitest) since it needs the whole backend up, not
+  # just node/npm.
+  frontend-e2e:
+    name: Frontend — E2E Tests (Playwright)
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_DB: edugraph_test
+          POSTGRES_USER: edugraph
+          POSTGRES_PASSWORD: testpass
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      neo4j:
+        image: neo4j:5.18-community
+        env:
+          NEO4J_AUTH: neo4j/testpass
+        ports: ['7687:7687']
+        options: >-
+          --health-cmd "cypher-shell -u neo4j -p testpass 'RETURN 1'"
+          --health-interval 15s
+          --health-timeout 10s
+          --health-retries 10
+          --health-start-period 30s
+      redis:
+        image: redis:7-alpine
+        ports: ['6379:6379']
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      POSTGRES_HOST: localhost
+      POSTGRES_PORT: 5432
+      POSTGRES_DB: edugraph_test
+      POSTGRES_USER: edugraph
+      POSTGRES_PASSWORD: testpass
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: backend/go.mod
+          cache-dependency-path: backend/go.sum
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      # Same flyway-cli approach as db-migration.yml, so this job doesn't
+      # depend on backend-test having run first (each CI job gets a
+      # fresh service container -- migrations aren't shared across jobs).
+      - name: Install Flyway and migrate
+        run: |
+          wget -q https://repo1.maven.org/maven2/org/flywaydb/flyway-commandline/10.10.0/flyway-commandline-10.10.0-linux-x64.tar.gz
+          tar -xzf flyway-commandline-10.10.0-linux-x64.tar.gz
+          sudo mv flyway-10.10.0 /opt/flyway
+          sudo ln -s /opt/flyway/flyway /usr/local/bin/flyway
+          flyway -url=jdbc:postgresql://localhost:5432/edugraph_test \
+                 -user=edugraph -password=testpass \
+                 -locations=filesystem:backend/db/migrations migrate
+
+      # Seed demo data (V015) doesn't run outside a migration by default
+      # here since edugraph_test's own migrate run above already applies
+      # it -- V015 is a real numbered migration, not a separate seed
+      # step, so this is just the flyway migrate above; no extra seeding
+      # command needed.
+
+      - name: Start the API server
+        working-directory: backend
+        run: go build -o /tmp/edugraph-api ./cmd/api && nohup /tmp/edugraph-api > /tmp/api.log 2>&1 &
+        env:
+          APP_ENV: development
+          PORT: '8080'
+          POSTGRES_SSLMODE: disable
+          NEO4J_URI: bolt://localhost:7687
+          NEO4J_USER: neo4j
+          NEO4J_PASSWORD: testpass
+          REDIS_URL: redis://localhost:6379
+          JWT_PRIVATE_KEY_PATH: /tmp/e2e-secrets/jwt_private.pem
+          JWT_PUBLIC_KEY_PATH: /tmp/e2e-secrets/jwt_public.pem
+          FRONTEND_URL: http://localhost:5173
+
+      - name: Wait for the API to be ready
+        run: |
+          for i in $(seq 1 30); do
+            curl -sf http://localhost:8080/health && exit 0
+            sleep 1
+          done
+          echo "::error::api did not become ready in time"
+          cat /tmp/api.log
+          exit 1
+
+      - name: Install frontend dependencies and Playwright browsers
+        working-directory: frontend
+        run: |
+          npm ci
+          npx playwright install --with-deps chromium
+
+      - name: Start the Vite dev server
+        working-directory: frontend
+        run: nohup npm run dev > /tmp/vite.log 2>&1 &
+        env:
+          API_PROXY_TARGET: http://localhost:8080
+
+      - name: Wait for the frontend to be ready
+        run: |
+          for i in $(seq 1 30); do
+            curl -sf http://localhost:5173/ && exit 0
+            sleep 1
+          done
+          echo "::error::vite dev server did not become ready in time"
+          cat /tmp/vite.log
+          exit 1
+
+      - name: Run Playwright tests
+        working-directory: frontend
+        run: npx playwright test
+
+      - name: Upload Playwright report
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: frontend/playwright-report/
+          retention-days: 7
 
   # ── AI Service ───────────────────────────────────────────────
   ai-lint:
@@ -225,12 +376,18 @@ jobs:
           COUNT=$(find ai-service/tests -name "test_*.py" 2>/dev/null | wc -l)
           echo "test_files=$COUNT" >> $GITHUB_OUTPUT
 
+      # checklist 12.4: real tests exist now (tests/test_llm_provider.py,
+      # tests/test_gap_analysis_llm.py) -- requirements-dev.txt pins
+      # pytest/pytest-asyncio/pytest-cov together so CI and local `pip
+      # install -r requirements-dev.txt` never drift. pytest-asyncio
+      # specifically matters: pyproject.toml's asyncio_mode = "auto"
+      # needs the plugin installed or every @pytest.mark.asyncio test
+      # errors outright.
       - name: Install and test
         if: steps.check.outputs.has_reqs == 'true' && steps.tests.outputs.test_files > 0
         working-directory: ai-service
         run: |
-          pip install -r requirements.txt
-          pip install pytest pytest-cov
+          pip install -r requirements-dev.txt
           pytest --cov=app --cov-report=xml -v
 
       - name: Skip — no tests yet
@@ -241,7 +398,7 @@ jobs:
   build-images:
     name: Build Docker Images
     runs-on: ubuntu-latest
-    needs: [backend-test, frontend-test, ai-test]
+    needs: [backend-test, frontend-test, frontend-e2e, ai-test]
     # Only run when the ECR registry var is configured. NOTE: the
     # `secrets` context is NOT available in job-level `if` -- referencing
     # it here made the whole workflow file invalid (every run failed with

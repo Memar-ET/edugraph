@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
+	"github.com/google/uuid"
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -80,6 +81,16 @@ func (s *JWTSigner) sign(userID, role string, ttl time.Duration) (string, error)
 		UserID: userID,
 		Role:   role,
 		RegisteredClaims: jwt.RegisteredClaims{
+			// ID (jti): RS256 is a deterministic signature scheme (no
+			// randomized nonce like RSA-PSS/ECDSA), and IssuedAt/
+			// ExpiresAt only carry second-granularity precision
+			// (jwt.NewNumericDate) -- without this, two tokens issued
+			// for the same user within the same wall-clock second are
+			// byte-identical, which previously collided on
+			// refresh_tokens.token_hash's unique constraint and turned
+			// into a hard 500 (found via a real test hitting Register
+			// then Login back-to-back, not a hypothetical).
+			ID:        uuid.NewString(),
 			IssuedAt:  jwt.NewNumericDate(now),
 			ExpiresAt: jwt.NewNumericDate(now.Add(ttl)),
 		},

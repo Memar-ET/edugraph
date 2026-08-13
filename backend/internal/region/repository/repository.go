@@ -60,6 +60,9 @@ func (r *Repository) List(ctx context.Context, limit, offset int) ([]Region, int
 		}
 		regions = append(regions, reg)
 	}
+	if err := rows.Err(); err != nil {
+		return nil, 0, fmt.Errorf("list regions: %w", err)
+	}
 
 	var total int64
 	if err := r.pool.QueryRow(ctx, `SELECT count(*) FROM regions`).Scan(&total); err != nil {

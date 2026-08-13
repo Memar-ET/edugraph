@@ -74,6 +74,9 @@ func (r *Repository) ListApplied(ctx context.Context, schoolID string, since tim
 		}
 		logs = append(logs, l)
 	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("list applied sync logs: %w", err)
+	}
 	return logs, nil
 }
 
@@ -105,6 +108,9 @@ func (r *Repository) ClaimPending(ctx context.Context, limit int) ([]SyncLog, er
 			return nil, err
 		}
 		logs = append(logs, l)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("claim pending sync logs: %w", err)
 	}
 	return logs, nil
 }

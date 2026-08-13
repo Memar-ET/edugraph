@@ -127,6 +127,11 @@ func (r *Repository) List(ctx context.Context, schoolID, regionID string, limit,
 		}
 		teachers = append(teachers, t)
 	}
+	// See student/repository.go's identical check for why this matters:
+	// without it, a mid-stream error silently reports as "zero results".
+	if err := rows.Err(); err != nil {
+		return nil, 0, fmt.Errorf("list teachers: %w", err)
+	}
 
 	var total int64
 	if err := r.pool.QueryRow(ctx, countQ, args...).Scan(&total); err != nil {

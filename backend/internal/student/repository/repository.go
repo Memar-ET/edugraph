@@ -154,6 +154,15 @@ func (r *Repository) List(ctx context.Context, schoolID, regionID string, limit,
 		}
 		students = append(students, st)
 	}
+	// Without this, an error mid-stream (a malformed query, a dropped
+	// connection) makes rows.Next() just return false as if the result
+	// set had ended -- silently reporting "zero results" instead of the
+	// real failure. Found via a test that hit exactly this (a bad
+	// LIMIT/OFFSET), which returned an empty list with a nil error
+	// instead of the actual Postgres error.
+	if err := rows.Err(); err != nil {
+		return nil, 0, fmt.Errorf("list students: %w", err)
+	}
 
 	var total int64
 	if err := r.pool.QueryRow(ctx, countQ, args...).Scan(&total); err != nil {

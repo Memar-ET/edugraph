@@ -96,6 +96,9 @@ func (r *Repository) List(ctx context.Context, regionID string, limit, offset in
 		}
 		schools = append(schools, s)
 	}
+	if err := rows.Err(); err != nil {
+		return nil, 0, fmt.Errorf("list schools: %w", err)
+	}
 
 	var total int64
 	if err := r.pool.QueryRow(ctx, countQ, args...).Scan(&total); err != nil {

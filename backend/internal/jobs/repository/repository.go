@@ -70,6 +70,9 @@ func (r *Repository) ListByCreator(ctx context.Context, createdBy string, limit,
 		}
 		jobs = append(jobs, j)
 	}
+	if err := rows.Err(); err != nil {
+		return nil, 0, fmt.Errorf("list jobs: %w", err)
+	}
 
 	var total int64
 	if err := r.pool.QueryRow(ctx, `SELECT count(*) FROM jobs WHERE created_by = $1`, createdBy).Scan(&total); err != nil {

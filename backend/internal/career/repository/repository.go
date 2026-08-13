@@ -94,6 +94,9 @@ func (r *Repository) List(ctx context.Context) ([]CareerPath, error) {
 		}
 		paths = append(paths, cp)
 	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("list career paths: %w", err)
+	}
 	return paths, nil
 }
 
@@ -165,6 +168,9 @@ func (r *Repository) StudentSubjectAverages(ctx context.Context, studentID strin
 		}
 		averages[subject] = avg
 	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("query subject averages: %w", err)
+	}
 	return averages, nil
 }
 
@@ -218,6 +224,9 @@ func (r *Repository) ListMatches(ctx context.Context, studentID string) ([]Match
 			return nil, fmt.Errorf("scan match: %w", err)
 		}
 		matches = append(matches, m)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("list matches: %w", err)
 	}
 	return matches, nil
 }
