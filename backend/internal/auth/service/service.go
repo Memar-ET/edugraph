@@ -124,6 +124,12 @@ func (s *Service) VerifyAccessToken(ctx context.Context, token string) (userID s
 	return claims.UserID, claims.Role, nil
 }
 
+// AccessTTL/RefreshTTL: the handler needs both to set each auth cookie's
+// Max-Age (checklist 11.1) -- proxying rather than duplicating the
+// JWTSigner's own TTL config here.
+func (s *Service) AccessTTL() time.Duration  { return s.jwt.AccessTTL() }
+func (s *Service) RefreshTTL() time.Duration { return s.jwt.RefreshTTL() }
+
 func (s *Service) issueTokens(ctx context.Context, user repository.User) (dto.AuthResponse, error) {
 	access, err := s.jwt.IssueAccessToken(user.ID, user.Role)
 	if err != nil {
@@ -142,8 +148,15 @@ func (s *Service) issueTokens(ctx context.Context, user repository.User) (dto.Au
 	return dto.AuthResponse{
 		AccessToken:  access,
 		RefreshToken: refresh,
-		ExpiresIn:    int(time.Until(expiresAt).Seconds()),
-		User:         toUserResponse(user),
+		// The access token's lifetime, not the refresh token's -- this
+		// tells a caller when the *access* token it just received will
+		// stop working (standard OAuth "expires_in" semantics). Was
+		// previously computed from expiresAt (the refresh token's
+		// expiry, ~7 days) instead of s.jwt.AccessTTL() (~15 min) --
+		// found and fixed while wiring AccessTTL() through for
+		// checklist 11.1's cookie Max-Age.
+		ExpiresIn: int(s.jwt.AccessTTL().Seconds()),
+		User:      toUserResponse(user),
 	}, nil
 }
 

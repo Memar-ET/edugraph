@@ -72,6 +72,7 @@ func (s *JWTSigner) IssueRefreshToken(userID, role string) (string, error) {
 }
 
 func (s *JWTSigner) RefreshTTL() time.Duration { return s.refreshTTL }
+func (s *JWTSigner) AccessTTL() time.Duration  { return s.accessTTL }
 
 func (s *JWTSigner) sign(userID, role string, ttl time.Duration) (string, error) {
 	now := time.Now()

@@ -18,8 +18,8 @@ import (
 // PDF" (window.print()), which every browser already does reliably with
 // correct fonts/pagination, instead of this service carrying a PDF-layout
 // dependency of its own.
-func (s *Service) GeneratePrintableExam(ctx context.Context, examID uuid.UUID) (string, error) {
-	exam, err := s.GetExam(ctx, examID)
+func (s *Service) GeneratePrintableExam(ctx context.Context, userID, examID uuid.UUID) (string, error) {
+	exam, err := s.GetExam(ctx, userID, examID)
 	if err != nil {
 		return "", err
 	}
@@ -43,8 +43,8 @@ func (s *Service) GeneratePrintableExam(ctx context.Context, examID uuid.UUID) (
 // hand-collected paper answer sheets against (or, on the digital side, to
 // cross-check the auto-grader). Non-MCQ questions are listed with a
 // "graded manually" note since there's no bubble to mark.
-func (s *Service) GenerateAnswerKeySheet(ctx context.Context, examID uuid.UUID) (string, error) {
-	exam, err := s.GetExam(ctx, examID)
+func (s *Service) GenerateAnswerKeySheet(ctx context.Context, userID, examID uuid.UUID) (string, error) {
+	exam, err := s.GetExam(ctx, userID, examID)
 	if err != nil {
 		return "", err
 	}

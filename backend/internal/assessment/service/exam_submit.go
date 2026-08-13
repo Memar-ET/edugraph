@@ -60,10 +60,13 @@ func (s *Service) ListExamQuestionsForStudent(ctx context.Context, userID, examI
 }
 
 // ListQuestionsForGrading backs the teacher-facing "Grade Exam" spreadsheet's
-// column headers -- no per-teacher-school ownership check, matching the
-// same convention already used by GetExam/ValidateExam/PublishExam (role
-// gating alone, enforced by middleware.RequireRole in the router).
-func (s *Service) ListQuestionsForGrading(ctx context.Context, examID uuid.UUID) ([]dto.GradingQuestion, error) {
+// column headers. Used to have no per-teacher-school ownership check --
+// see verifyCallerOwnsExam's doc comment (exam_upload.go) for why that
+// was fixed (checklist 11.3).
+func (s *Service) ListQuestionsForGrading(ctx context.Context, userID, examID uuid.UUID) ([]dto.GradingQuestion, error) {
+	if err := s.verifyCallerOwnsExam(ctx, userID, examID); err != nil {
+		return nil, err
+	}
 	questions, err := s.repo.FetchQuestionsForGrading(ctx, examID)
 	if err != nil {
 		return nil, apperrors.Internal(err)
@@ -198,6 +201,12 @@ func gradeMCQOrPend(q repository.QuestionForGrading, response string) repository
 // answer_key if present, purely for the passed flag) or the teacher's own
 // numeric marks for everything else.
 func (s *Service) BulkGradeExam(ctx context.Context, examID, gradedBy uuid.UUID, req dto.BulkGradeRequest) (*dto.BulkGradeResponse, error) {
+	// gradedBy doubles as the caller for the ownership check -- it's
+	// already the JWT-derived teacher/school_admin userID (see
+	// handler.BulkGradeExam), no separate param needed.
+	if err := s.verifyCallerOwnsExam(ctx, gradedBy, examID); err != nil {
+		return nil, err
+	}
 	exam, err := s.repo.FetchExamForValidation(ctx, examID)
 	if errors.Is(err, repository.ErrNotFound) {
 		return nil, apperrors.NotFound("exam not found")

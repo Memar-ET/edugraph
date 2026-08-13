@@ -32,10 +32,13 @@ type answerKeyJobPayload struct {
 // PDF/DOCX libraries.
 func (s *Service) UploadAnswerKey(
 	ctx context.Context,
-	examID uuid.UUID,
+	userID, examID uuid.UUID,
 	fileName, mimeType string,
 	file io.Reader,
 ) (*dto.UploadAnswerKeyResponse, error) {
+	if err := s.verifyCallerOwnsExam(ctx, userID, examID); err != nil {
+		return nil, err
+	}
 	if _, err := s.repo.FetchExamForValidation(ctx, examID); err != nil {
 		if errors.Is(err, repository.ErrNotFound) {
 			return nil, apperrors.NotFound("exam not found")

@@ -4,30 +4,28 @@ import { persist } from 'zustand/middleware'
 import type { AuthResponse, UserResponse } from '@/types/api'
 
 interface AuthState {
-  accessToken: string | null
-  refreshToken: string | null
+  // No accessToken/refreshToken here (checklist 11.1, was the exact gap
+  // this file's own prior comment already flagged: tokens persisted to
+  // localStorage are readable by any script on the page, including an
+  // XSS payload). The backend now sets both as HttpOnly cookies -- see
+  // backend/pkg/middleware/middleware.go's SetAuthCookies -- which this
+  // client never sees the value of at all, only whether a login attempt
+  // succeeded. isAuthenticated is that boolean, not a credential: an XSS
+  // payload reading `true` out of localStorage gains nothing, it still
+  // can't forge a request without the cookie it can't read.
+  isAuthenticated: boolean
   user: UserResponse | null
   setAuth: (auth: AuthResponse) => void
   clearAuth: () => void
 }
 
-// Tokens are persisted to localStorage for this Phase 1 build (simplest
-// path to "survives a page reload"). A production hardening pass should
-// move the refresh token to an httpOnly cookie set by the Go API to
-// reduce XSS exposure -- tracked as follow-up, not blocking Phase 1.
 export const useAuthStore = create<AuthState>()(
   persist(
     (set) => ({
-      accessToken: null,
-      refreshToken: null,
+      isAuthenticated: false,
       user: null,
-      setAuth: (auth) =>
-        set({
-          accessToken: auth.access_token,
-          refreshToken: auth.refresh_token,
-          user: auth.user,
-        }),
-      clearAuth: () => set({ accessToken: null, refreshToken: null, user: null }),
+      setAuth: (auth) => set({ isAuthenticated: true, user: auth.user }),
+      clearAuth: () => set({ isAuthenticated: false, user: null }),
     }),
     { name: 'edugraph-auth' },
   ),

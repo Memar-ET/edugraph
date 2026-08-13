@@ -24,6 +24,12 @@ func (h *Handler) UpdateExamScope(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	userID, err := callerID(r)
+	if err != nil {
+		middleware.WriteError(w, apperrors.Internal(err))
+		return
+	}
+
 	var req dto.UpdateExamScopeRequest
 	if !decode(w, r, &req) {
 		return
@@ -33,7 +39,7 @@ func (h *Handler) UpdateExamScope(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	resp, err := h.svc.UpdateExamScope(r.Context(), examID, req)
+	resp, err := h.svc.UpdateExamScope(r.Context(), userID, examID, req)
 	if err != nil {
 		middleware.WriteError(w, err)
 		return

@@ -75,8 +75,8 @@ const indexRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/',
   beforeLoad: () => {
-    const { accessToken, user } = useAuthStore.getState()
-    if (!accessToken) throw redirect({ to: '/login' })
+    const { isAuthenticated, user } = useAuthStore.getState()
+    if (!isAuthenticated) throw redirect({ to: '/login' })
     const landing = landingPathFor(user?.role)
     if (landing !== '/') throw redirect({ to: landing })
   },
@@ -87,8 +87,8 @@ const loginRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/login',
   beforeLoad: () => {
-    const { accessToken, user } = useAuthStore.getState()
-    if (accessToken) throw redirect({ to: landingPathFor(user?.role) })
+    const { isAuthenticated, user } = useAuthStore.getState()
+    if (isAuthenticated) throw redirect({ to: landingPathFor(user?.role) })
   },
   component: LoginPage,
 })
@@ -97,32 +97,32 @@ const loginRoute = createRoute({
 // curriculum_officer/ministry_admin (see router.go RequireRole), so the
 // frontend enforces the same boundary before ever calling the API.
 function requireCurriculumAccess() {
-  const { accessToken, user } = useAuthStore.getState()
-  if (!accessToken) throw redirect({ to: '/login' })
+  const { isAuthenticated, user } = useAuthStore.getState()
+  if (!isAuthenticated) throw redirect({ to: '/login' })
   if (!canAccessCurriculumReview(user?.role)) throw redirect({ to: '/' })
 }
 
 // Guards teacher exam routes (Capabilities 2A/2B/2C Flow 2, 4A, 4B) --
 // matches RequireRole(roleTeacher, roleSchoolAdmin) on the Go side.
 function requireTeacherAccess() {
-  const { accessToken, user } = useAuthStore.getState()
-  if (!accessToken) throw redirect({ to: '/login' })
+  const { isAuthenticated, user } = useAuthStore.getState()
+  if (!isAuthenticated) throw redirect({ to: '/login' })
   if (!canAccessTeacherDashboard(user?.role)) throw redirect({ to: '/' })
 }
 
 // Guards student exam + tutor routes (Capabilities 2C Flow 1, 3C) --
 // matches RequireRole(roleStudent) on the Go side.
 function requireStudentAccess() {
-  const { accessToken, user } = useAuthStore.getState()
-  if (!accessToken) throw redirect({ to: '/login' })
+  const { isAuthenticated, user } = useAuthStore.getState()
+  if (!isAuthenticated) throw redirect({ to: '/login' })
   if (!canAccessStudentDashboard(user?.role)) throw redirect({ to: '/' })
 }
 
 // Routes with no server-side role gate beyond "authenticated" (e.g. career
 // paths -- GET is open to any role, POST is further gated inside the page).
 function requireAuth() {
-  const { accessToken } = useAuthStore.getState()
-  if (!accessToken) throw redirect({ to: '/login' })
+  const { isAuthenticated } = useAuthStore.getState()
+  if (!isAuthenticated) throw redirect({ to: '/login' })
 }
 
 const curriculumDashboardRoute = createRoute({

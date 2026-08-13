@@ -28,7 +28,7 @@ func (h *Handler) PresignUpload(w http.ResponseWriter, r *http.Request) {
 		middleware.WriteError(w, apperrors.BadRequest(err.Error()))
 		return
 	}
-	resp, err := h.svc.PresignUpload(r.Context(), req)
+	resp, err := h.svc.PresignUpload(r.Context(), middleware.Role(r.Context()), req)
 	if err != nil {
 		middleware.WriteError(w, err)
 		return
@@ -45,7 +45,7 @@ func (h *Handler) PresignDownload(w http.ResponseWriter, r *http.Request) {
 		middleware.WriteError(w, apperrors.BadRequest(err.Error()))
 		return
 	}
-	resp, err := h.svc.PresignDownload(r.Context(), req)
+	resp, err := h.svc.PresignDownload(r.Context(), middleware.Role(r.Context()), req)
 	if err != nil {
 		middleware.WriteError(w, err)
 		return

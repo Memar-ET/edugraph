@@ -66,6 +66,22 @@ export async function login(payload: LoginRequest): Promise<AuthResponse> {
   return unwrap(res.data)
 }
 
+// Revokes the refresh token server-side and clears both auth cookies
+// (see backend/internal/auth/handler/handler.go's Logout) -- calling
+// authStore.clearAuth() alone (checklist 11.1) only wipes this client's
+// local state, it can't touch an HttpOnly cookie at all, so without this
+// call the session cookie would stay fully valid after a user "logs
+// out." Errors are swallowed deliberately: the caller clears local state
+// and redirects to /login regardless (see AppHeader.tsx/AppShell.tsx),
+// and a network hiccup here shouldn't block that.
+export async function logout(): Promise<void> {
+  try {
+    await apiClient.post('/auth/logout')
+  } catch {
+    // best-effort -- see comment above
+  }
+}
+
 export interface UploadCurriculumPayload {
   file: File
   subjectCode: string

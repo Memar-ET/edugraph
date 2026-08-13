@@ -21,8 +21,13 @@ func (h *Handler) PrintExam(w http.ResponseWriter, r *http.Request) {
 		middleware.WriteError(w, apperrors.BadRequest("invalid exam id"))
 		return
 	}
+	userID, err := callerID(r)
+	if err != nil {
+		middleware.WriteError(w, apperrors.Internal(err))
+		return
+	}
 
-	html, err := h.svc.GeneratePrintableExam(r.Context(), examID)
+	html, err := h.svc.GeneratePrintableExam(r.Context(), userID, examID)
 	if err != nil {
 		middleware.WriteError(w, err)
 		return
@@ -44,8 +49,13 @@ func (h *Handler) PrintAnswerKey(w http.ResponseWriter, r *http.Request) {
 		middleware.WriteError(w, apperrors.BadRequest("invalid exam id"))
 		return
 	}
+	userID, err := callerID(r)
+	if err != nil {
+		middleware.WriteError(w, apperrors.Internal(err))
+		return
+	}
 
-	html, err := h.svc.GenerateAnswerKeySheet(r.Context(), examID)
+	html, err := h.svc.GenerateAnswerKeySheet(r.Context(), userID, examID)
 	if err != nil {
 		middleware.WriteError(w, err)
 		return

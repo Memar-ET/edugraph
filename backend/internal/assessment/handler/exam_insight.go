@@ -48,8 +48,13 @@ func (h *Handler) ListExamInsights(w http.ResponseWriter, r *http.Request) {
 		middleware.WriteError(w, apperrors.BadRequest("invalid exam id"))
 		return
 	}
+	userID, err := callerID(r)
+	if err != nil {
+		middleware.WriteError(w, apperrors.Internal(err))
+		return
+	}
 
-	insights, err := h.svc.ListExamInsights(r.Context(), examID)
+	insights, err := h.svc.ListExamInsights(r.Context(), userID, examID)
 	if err != nil {
 		middleware.WriteError(w, err)
 		return

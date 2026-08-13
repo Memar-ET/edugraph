@@ -46,7 +46,10 @@ var bloomLevels = []string{"remember", "understand", "apply", "analyse", "evalua
 
 // ValidateExam computes Capability 2B's 5-part report and stores it,
 // moving the exam to 'validation_pending'.
-func (s *Service) ValidateExam(ctx context.Context, examID uuid.UUID) (*dto.ValidationReport, error) {
+func (s *Service) ValidateExam(ctx context.Context, userID, examID uuid.UUID) (*dto.ValidationReport, error) {
+	if err := s.verifyCallerOwnsExam(ctx, userID, examID); err != nil {
+		return nil, err
+	}
 	exam, err := s.repo.FetchExamForValidation(ctx, examID)
 	if errors.Is(err, repository.ErrNotFound) {
 		return nil, apperrors.NotFound("exam not found")
@@ -103,7 +106,10 @@ func (s *Service) ValidateExam(ctx context.Context, examID uuid.UUID) (*dto.Vali
 // PublishExam only succeeds once the exam has been validated at least once
 // (status 'validation_pending'). Not blocked by report content -- a
 // warning system, not a hard quality gate; the teacher decides.
-func (s *Service) PublishExam(ctx context.Context, examID uuid.UUID) (*dto.PublishResponse, error) {
+func (s *Service) PublishExam(ctx context.Context, userID, examID uuid.UUID) (*dto.PublishResponse, error) {
+	if err := s.verifyCallerOwnsExam(ctx, userID, examID); err != nil {
+		return nil, err
+	}
 	if err := s.repo.PublishExam(ctx, examID); err != nil {
 		if errors.Is(err, repository.ErrNotValidated) {
 			return nil, apperrors.Conflict("exam must be validated (POST .../validate) before it can be published")

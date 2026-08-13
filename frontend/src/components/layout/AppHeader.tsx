@@ -1,6 +1,7 @@
 import { useNavigate } from '@tanstack/react-router'
 
 import { Button } from '@components/ui'
+import { logout } from '@lib/api/endpoints'
 import { useAuthStore } from '@stores/auth.store'
 
 export function AppHeader() {
@@ -9,6 +10,10 @@ export function AppHeader() {
   const clearAuth = useAuthStore((s) => s.clearAuth)
 
   const handleLogout = () => {
+    // Must revoke server-side too -- clearAuth() alone can't touch the
+    // HttpOnly session cookies (checklist 11.1), see endpoints.ts's
+    // logout() for why.
+    void logout()
     clearAuth()
     void navigate({ to: '/login' })
   }

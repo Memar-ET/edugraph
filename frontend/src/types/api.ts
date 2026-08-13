@@ -43,9 +43,12 @@ export interface UserResponse {
   created_at: string
 }
 
+// access_token/refresh_token are deliberately absent (checklist 11.1):
+// the backend now sets them as HttpOnly cookies (see
+// backend/pkg/middleware/middleware.go's SetAuthCookies) and never
+// includes them in the JSON body -- there's nothing for this client to
+// read.
 export interface AuthResponse {
-  access_token: string
-  refresh_token: string
   expires_in: number
   user: UserResponse
 }

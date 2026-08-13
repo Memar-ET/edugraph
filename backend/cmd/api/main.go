@@ -131,7 +131,11 @@ func main() {
 	// ── Wire dependencies (manual DI — no framework) ──────────
 	authRepository := authrepo.New(pgPool)
 	authService := authsvc.New(authRepository, jwtSigner, redisClient)
-	authHandler := authhandler.New(authService)
+	// checklist 11.1: Secure must be true wherever this is actually
+	// served over HTTPS, but a Secure cookie is silently dropped by the
+	// browser over plain http://localhost, which "development" still is
+	// -- same AppEnv check EnsureDevKeyPair already uses just above.
+	authHandler := authhandler.New(authService, cfg.AppEnv != "development")
 
 	regionRepository := regionrepo.New(pgPool)
 	regionService := regionsvc.New(regionRepository)

@@ -20,9 +20,12 @@ import (
 // allowed before the exam is published: an exam already delivered to
 // students shouldn't have its curriculum scope moved out from under
 // attempts that are submitted or in progress.
-func (s *Service) UpdateExamScope(ctx context.Context, examID uuid.UUID, req dto.UpdateExamScopeRequest) (*dto.UpdateExamScopeResponse, error) {
+func (s *Service) UpdateExamScope(ctx context.Context, userID, examID uuid.UUID, req dto.UpdateExamScopeRequest) (*dto.UpdateExamScopeResponse, error) {
 	if req.SubjectCode == nil && req.GradeLevel == nil && req.ExamScope == nil && req.UnitNumbers == nil {
 		return nil, apperrors.BadRequest("at least one of subjectCode, gradeLevel, examScope, unitNumbers must be supplied")
+	}
+	if err := s.verifyCallerOwnsExam(ctx, userID, examID); err != nil {
+		return nil, err
 	}
 
 	exam, err := s.repo.FetchExamForValidation(ctx, examID)

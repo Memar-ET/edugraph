@@ -37,6 +37,23 @@ func (r *Repository) TeacherSchoolID(ctx context.Context, userID uuid.UUID) (uui
 	return *schoolID, nil
 }
 
+// ExamSchoolID looks up which school an exam belongs to -- used purely
+// for the teacher/school_admin ownership check (checklist 11.3, see
+// service.verifyCallerOwnsExam), separate from each function's own
+// exam-fetch query so this drops in without touching any of their
+// existing DTOs or SELECT lists.
+func (r *Repository) ExamSchoolID(ctx context.Context, examID uuid.UUID) (uuid.UUID, error) {
+	var schoolID uuid.UUID
+	err := r.pool.QueryRow(ctx, `SELECT school_id FROM assessment.exams WHERE id = $1`, examID).Scan(&schoolID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return uuid.Nil, ErrNotFound
+	}
+	if err != nil {
+		return uuid.Nil, fmt.Errorf("lookup exam school: %w", err)
+	}
+	return schoolID, nil
+}
+
 // MatchSubjectFromTitle finds the curriculum.subjects row for gradeLevel
 // whose name_en or code appears in the exam title (case-insensitive), e.g.
 // title "Grade 11 Biology Unit Test" + gradeLevel 11 matches the subject
