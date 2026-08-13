@@ -14,6 +14,13 @@ zero internet access") -> the caller's deterministic English summary
 Same resilience contract at every tier: any failure (unset key, network
 error, unparseable response) returns (None, None) and the caller moves to
 the next tier -- an LLM hiccup must never fail the analysis.
+
+Amharic: Gemini's prompt asks for English + Amharic (bilingual explanations
+are the target design). Ollama gets an English-only prompt instead --
+verified directly (not assumed) that qwen2.5:7b-instruct and gemma2:9b
+both produce garbled, non-functional Amharic, and Amharic isn't mandatory
+at this stage (confirmed), so the offline tier trades the bilingual
+target for actually-usable English rather than ship broken text.
 """
 
 from __future__ import annotations
@@ -51,6 +58,7 @@ def _build_prompt(
     grade_level: int,
     percentage: Optional[float],
     gap_contexts: list[dict],
+    english_only: bool = False,
 ) -> str:
     gap_lines = []
     for g in gap_contexts:
@@ -68,6 +76,17 @@ def _build_prompt(
             line += " No broken prerequisite was found; the gap is in this topic itself."
         gap_lines.append(line)
 
+    if english_only:
+        explanation_instruction = "Write each explanation in simple English only."
+        summary_instruction = "Also write examSummary: 2-3 sentences (English only)"
+        shape_hint = '{"gaps": [{"index": <int>, "explanation": "<en>"}], "examSummary": "<en>"}.'
+    else:
+        explanation_instruction = (
+            "Write each explanation in English followed by the same message in Amharic."
+        )
+        summary_instruction = "Also write examSummary: 2-3 sentences (English, then Amharic)"
+        shape_hint = '{"gaps": [{"index": <int>, "explanation": "<en + am>"}], "examSummary": "<en + am>"}.'
+
     return (
         "You are a diagnostic tutor for Ethiopian K-12 students. A student "
         f"took \"{exam_title}\" ({exam_scope.replace('_', ' ')}, {subject_code}, "
@@ -76,15 +95,12 @@ def _build_prompt(
         "encouraging sentence WHY the student likely missed that question -- "
         "connecting it to the root cause when one is given (e.g. \"You "
         "couldn't solve the force problem because you didn't add the vectors "
-        "correctly first.\"). Write each explanation in English followed by "
-        "the same message in Amharic.\n\n"
+        f"correctly first.\"). {explanation_instruction}\n\n"
         + "\n".join(gap_lines)
-        + "\n\nAlso write examSummary: 2-3 sentences (English, then Amharic) "
+        + f"\n\n{summary_instruction} "
         "summarizing the whole exam -- what went well, the main weak area, "
         "and the single most important thing to review first.\n\n"
-        "Respond with ONLY a JSON object of the exact shape "
-        '{"gaps": [{"index": <int>, "explanation": "<en + am>"}], '
-        '"examSummary": "<en + am>"}.'
+        "Respond with ONLY a JSON object of the exact shape " + shape_hint
     )
 
 
@@ -183,7 +199,11 @@ async def synthesize_insights(
     if explanations or summary:
         return explanations, summary, GEMINI_MODEL
 
-    explanations, summary = await _synthesize_via_ollama(prompt)
+    # English-only prompt for Ollama -- see module docstring.
+    ollama_prompt = _build_prompt(
+        exam_title, exam_scope, subject_code, grade_level, percentage, gap_contexts, english_only=True
+    )
+    explanations, summary = await _synthesize_via_ollama(ollama_prompt)
     if explanations or summary:
         return explanations, summary, settings.OLLAMA_MODEL
 
