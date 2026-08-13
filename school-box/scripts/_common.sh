@@ -50,9 +50,10 @@ require_env_file() {
     # before it produces a confusing failure three steps later (a
     # container crash-looping on a bad password, or two boxes silently
     # sharing SCHOOL_BOX_ID=changeme-generate-a-real-uuid).
-    if grep -qE '^(SCHOOL_BOX_ID|SCHOOL_ID|POSTGRES_PASSWORD|NEO4J_PASSWORD|ECR_REGISTRY)=changeme' "$ENV_FILE"; then
+    if grep -qE '^(SCHOOL_BOX_ID|SCHOOL_ID|SCHOOL_BOX_SECRET|POSTGRES_PASSWORD|NEO4J_PASSWORD|ECR_REGISTRY)=changeme' "$ENV_FILE"; then
         echo "ERROR: $ENV_FILE still has 'changeme' placeholder values." >&2
-        echo "Edit SCHOOL_BOX_ID, SCHOOL_ID, POSTGRES_PASSWORD, NEO4J_PASSWORD, and ECR_REGISTRY before continuing." >&2
+        echo "Edit SCHOOL_BOX_ID, SCHOOL_ID, SCHOOL_BOX_SECRET, POSTGRES_PASSWORD, NEO4J_PASSWORD, and ECR_REGISTRY before continuing." >&2
+        echo "SCHOOL_BOX_SECRET specifically comes from running: go run ./backend/cmd/provision-school-box -device-id <SCHOOL_BOX_ID> -school-id <SCHOOL_ID> (see .env.school-box.example)." >&2
         exit 1
     fi
 }

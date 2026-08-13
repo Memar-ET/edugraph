@@ -203,7 +203,7 @@ func main() {
 	storageHandler := storagehandler.New(storageService)
 
 	// Router
-	router := newRouter(cfg, log, authService, handlers{
+	router := newRouter(cfg, log, authService, syncService, handlers{
 		auth:         authHandler,
 		region:       regionHandler,
 		school:       schoolHandler,

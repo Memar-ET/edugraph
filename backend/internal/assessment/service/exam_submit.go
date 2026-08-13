@@ -134,7 +134,7 @@ func (s *Service) SubmitExam(ctx context.Context, userID, examID uuid.UUID, req 
 		}
 	}
 
-	if err := s.repo.SaveStudentAnswers(ctx, attemptID, student.ID, student.SchoolID, answers); err != nil {
+	if err := s.repo.SaveStudentAnswers(ctx, attemptID, student.ID, student.SchoolID, answers, nil); err != nil {
 		return nil, apperrors.Internal(err)
 	}
 	if err := s.repo.RecomputeAttemptTotals(ctx, attemptID); err != nil {
@@ -197,7 +197,7 @@ func gradeMCQOrPend(q repository.QuestionForGrading, response string) repository
 // re-grade. entry.Value is an MCQ option letter (cross-checked against
 // answer_key if present, purely for the passed flag) or the teacher's own
 // numeric marks for everything else.
-func (s *Service) BulkGradeExam(ctx context.Context, examID uuid.UUID, req dto.BulkGradeRequest) (*dto.BulkGradeResponse, error) {
+func (s *Service) BulkGradeExam(ctx context.Context, examID, gradedBy uuid.UUID, req dto.BulkGradeRequest) (*dto.BulkGradeResponse, error) {
 	exam, err := s.repo.FetchExamForValidation(ctx, examID)
 	if errors.Is(err, repository.ErrNotFound) {
 		return nil, apperrors.NotFound("exam not found")
@@ -241,7 +241,7 @@ func (s *Service) BulkGradeExam(ctx context.Context, examID uuid.UUID, req dto.B
 		for _, e := range entries {
 			answers = append(answers, gradeTeacherEntry(questionsByID[e.QuestionID], e.Value))
 		}
-		if err := s.repo.SaveStudentAnswers(ctx, *attemptID, studentID, exam.SchoolID, answers); err != nil {
+		if err := s.repo.SaveStudentAnswers(ctx, *attemptID, studentID, exam.SchoolID, answers, &gradedBy); err != nil {
 			return nil, apperrors.Internal(err)
 		}
 		if err := s.repo.RecomputeAttemptTotals(ctx, *attemptID); err != nil {

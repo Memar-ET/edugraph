@@ -30,7 +30,9 @@ func (s *Service) Create(ctx context.Context, req dto.CreateTeacherRequest) (dto
 	return toResponse(t), nil
 }
 
-func (s *Service) Get(ctx context.Context, id string) (dto.TeacherResponse, error) {
+// Get and List apply the same caller-scoping policy as
+// student/service.go's Get/List -- see there for the full rationale.
+func (s *Service) Get(ctx context.Context, userID, role, id string) (dto.TeacherResponse, error) {
 	t, err := s.repo.GetByID(ctx, id)
 	if errors.Is(err, repository.ErrNotFound) {
 		return dto.TeacherResponse{}, apperrors.NotFound("teacher not found")
@@ -38,11 +40,21 @@ func (s *Service) Get(ctx context.Context, id string) (dto.TeacherResponse, erro
 	if err != nil {
 		return dto.TeacherResponse{}, apperrors.Internal(err)
 	}
+
+	if err := s.authorizeScope(ctx, userID, role, t.SchoolID); err != nil {
+		return dto.TeacherResponse{}, err
+	}
+
 	return toResponse(t), nil
 }
 
-func (s *Service) List(ctx context.Context, schoolID string, p pagination.Params) ([]dto.TeacherResponse, int64, error) {
-	teachers, total, err := s.repo.List(ctx, schoolID, p.Limit, p.Offset())
+func (s *Service) List(ctx context.Context, userID, role, requestedSchoolID string, p pagination.Params) ([]dto.TeacherResponse, int64, error) {
+	schoolID, regionID, err := s.scopeFilters(ctx, userID, role, requestedSchoolID)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	teachers, total, err := s.repo.List(ctx, schoolID, regionID, p.Limit, p.Offset())
 	if err != nil {
 		return nil, 0, apperrors.Internal(err)
 	}
@@ -51,6 +63,71 @@ func (s *Service) List(ctx context.Context, schoolID string, p pagination.Params
 		resp = append(resp, toResponse(t))
 	}
 	return resp, total, nil
+}
+
+func (s *Service) authorizeScope(ctx context.Context, userID, role, recordSchoolID string) error {
+	switch role {
+	case "ministry_admin":
+		return nil
+	case "regional_admin":
+		_, ownRegion, err := s.repo.CallerScope(ctx, userID)
+		if err != nil {
+			return scopeErr(err)
+		}
+		recordRegion, err := s.repo.SchoolRegionID(ctx, recordSchoolID)
+		if err != nil {
+			return scopeErr(err)
+		}
+		if ownRegion == "" || recordRegion != ownRegion {
+			return apperrors.NotFound("teacher not found")
+		}
+		return nil
+	case "school_admin", "teacher":
+		ownSchool, _, err := s.repo.CallerScope(ctx, userID)
+		if err != nil {
+			return scopeErr(err)
+		}
+		if ownSchool == "" || recordSchoolID != ownSchool {
+			return apperrors.NotFound("teacher not found")
+		}
+		return nil
+	default:
+		return apperrors.Forbidden("not permitted to view teacher records")
+	}
+}
+
+func (s *Service) scopeFilters(ctx context.Context, userID, role, requestedSchoolID string) (schoolID, regionID string, err error) {
+	switch role {
+	case "ministry_admin":
+		return requestedSchoolID, "", nil
+	case "regional_admin":
+		_, ownRegion, err := s.repo.CallerScope(ctx, userID)
+		if err != nil {
+			return "", "", scopeErr(err)
+		}
+		if ownRegion == "" {
+			return "", "", apperrors.Forbidden("regional admin has no region assigned")
+		}
+		return requestedSchoolID, ownRegion, nil
+	case "school_admin", "teacher":
+		ownSchool, _, err := s.repo.CallerScope(ctx, userID)
+		if err != nil {
+			return "", "", scopeErr(err)
+		}
+		if ownSchool == "" {
+			return "", "", apperrors.Forbidden("no school assigned to this account")
+		}
+		return ownSchool, "", nil
+	default:
+		return "", "", apperrors.Forbidden("not permitted to view teacher records")
+	}
+}
+
+func scopeErr(err error) error {
+	if errors.Is(err, repository.ErrNotFound) {
+		return apperrors.NotFound("user not found")
+	}
+	return apperrors.Internal(err)
 }
 
 func (s *Service) Update(ctx context.Context, id string, req dto.UpdateTeacherRequest) (dto.TeacherResponse, error) {

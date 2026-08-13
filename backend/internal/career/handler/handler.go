@@ -4,8 +4,6 @@ import (
 	"encoding/json"
 	"net/http"
 
-	"github.com/go-chi/chi/v5"
-
 	"github.com/edugraph-ai/edugraph/internal/career/dto"
 	"github.com/edugraph-ai/edugraph/internal/career/service"
 	apperrors "github.com/edugraph-ai/edugraph/pkg/errors"
@@ -47,8 +45,11 @@ func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
 	middleware.WriteJSON(w, http.StatusOK, resp)
 }
 
+// Generate and Matches both resolve the student from the caller's own
+// JWT (middleware.UserID), not a URL param -- see
+// service.GenerateMatches's doc comment for the IDOR this replaced.
 func (h *Handler) Generate(w http.ResponseWriter, r *http.Request) {
-	resp, err := h.svc.GenerateMatches(r.Context(), chi.URLParam(r, "studentID"))
+	resp, err := h.svc.GenerateMatches(r.Context(), middleware.UserID(r.Context()))
 	if err != nil {
 		middleware.WriteError(w, err)
 		return
@@ -57,7 +58,7 @@ func (h *Handler) Generate(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) Matches(w http.ResponseWriter, r *http.Request) {
-	resp, err := h.svc.Matches(r.Context(), chi.URLParam(r, "studentID"))
+	resp, err := h.svc.Matches(r.Context(), middleware.UserID(r.Context()))
 	if err != nil {
 		middleware.WriteError(w, err)
 		return

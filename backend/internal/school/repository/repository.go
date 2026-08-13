@@ -52,6 +52,25 @@ func (r *Repository) GetByID(ctx context.Context, id string) (School, error) {
 	return s, err
 }
 
+// CallerRegionID resolves the calling user's own region, for
+// regional_admin's List scoping -- see service.List. Empty if the
+// caller's user row has no region set (e.g. ministry_admin, who isn't
+// tied to one).
+func (r *Repository) CallerRegionID(ctx context.Context, userID string) (string, error) {
+	var regionID *string
+	err := r.pool.QueryRow(ctx, `SELECT region_id FROM users WHERE id = $1`, userID).Scan(&regionID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return "", ErrNotFound
+	}
+	if err != nil {
+		return "", fmt.Errorf("lookup caller region: %w", err)
+	}
+	if regionID == nil {
+		return "", nil
+	}
+	return *regionID, nil
+}
+
 func (r *Repository) List(ctx context.Context, regionID string, limit, offset int) ([]School, int64, error) {
 	q := `SELECT id, region_id, name, code, address, created_at, updated_at FROM schools`
 	countQ := `SELECT count(*) FROM schools`

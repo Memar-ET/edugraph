@@ -22,6 +22,7 @@ import (
 type Config struct {
 	CloudSyncEndpoint string // e.g. https://api.edugraph.et — base URL, no path.
 	SchoolBoxID       string // this device's identity, sent as device_id.
+	SchoolBoxSecret   string // proves the above -- see cmd/provision-school-box.
 	SchoolID          string // the school's UUID, sent as school_id.
 	SyncInterval      time.Duration
 	PushBatchSize     int
@@ -219,6 +220,7 @@ func (a *Agent) postJSON(ctx context.Context, path string, body, out any) error 
 		return err
 	}
 	req.Header.Set("Content-Type", "application/json")
+	a.setDeviceAuth(req)
 	return a.do(req, out)
 }
 
@@ -227,7 +229,17 @@ func (a *Agent) getJSON(ctx context.Context, path string, out any) error {
 	if err != nil {
 		return err
 	}
+	a.setDeviceAuth(req)
 	return a.do(req, out)
+}
+
+// setDeviceAuth attaches this box's device credential -- see
+// backend/internal/sync/handler/device_auth.go for what validates these
+// headers server-side, and cmd/provision-school-box for how a box gets
+// one in the first place.
+func (a *Agent) setDeviceAuth(req *http.Request) {
+	req.Header.Set("X-Device-Id", a.cfg.SchoolBoxID)
+	req.Header.Set("X-Device-Secret", a.cfg.SchoolBoxSecret)
 }
 
 func (a *Agent) do(req *http.Request, out any) error {

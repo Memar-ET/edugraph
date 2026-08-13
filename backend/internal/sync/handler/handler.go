@@ -32,7 +32,7 @@ func (h *Handler) Push(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	resp, err := h.svc.Push(r.Context(), req)
+	resp, err := h.svc.Push(r.Context(), deviceSchoolID(r.Context()), req)
 	if err != nil {
 		middleware.WriteError(w, err)
 		return
@@ -57,7 +57,7 @@ func (h *Handler) Pull(w http.ResponseWriter, r *http.Request) {
 		since = parsed
 	}
 
-	resp, err := h.svc.Pull(r.Context(), schoolID, since)
+	resp, err := h.svc.Pull(r.Context(), deviceSchoolID(r.Context()), schoolID, since)
 	if err != nil {
 		middleware.WriteError(w, err)
 		return

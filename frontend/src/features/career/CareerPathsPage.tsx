@@ -30,12 +30,12 @@ function MyCareerMatches() {
 
   const matchesQuery = useQuery({
     queryKey: queryKeys.careerMatches(student?.id ?? 'unknown'),
-    queryFn: () => getCareerMatches(student!.id),
+    queryFn: () => getCareerMatches(),
     enabled: Boolean(student),
   })
 
   const generate = useMutation({
-    mutationFn: () => generateCareerMatches(student!.id),
+    mutationFn: () => generateCareerMatches(),
     onSuccess: (matches) => {
       queryClient.setQueryData(queryKeys.careerMatches(student!.id), matches)
     },

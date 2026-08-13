@@ -29,10 +29,14 @@ type entitySpec struct {
 }
 
 // entityAllowlist is deliberately explicit rather than trusting whatever
-// entity_type/columns arrive over the wire — the cloud's /sync/pull has no
-// per-device auth today (a known gap, see the PRD review), so this is the
-// boundary that keeps a compromised or buggy pull response from writing to
-// an arbitrary table. Keep in sync with V029__sync_outbox.sql's triggers.
+// entity_type/columns arrive over the wire. The cloud's /sync/pull now
+// requires a per-device credential (checklist 10.1, see
+// backend/internal/sync/handler/device_auth.go and
+// docs/architecture/data-integrity.md) -- this allowlist was originally
+// this boundary's only defense against a compromised or buggy pull
+// response writing to an arbitrary table, and stays as defense in depth
+// even with device auth in place. Keep in sync with
+// V029__sync_outbox.sql's triggers.
 var entityAllowlist = map[string]entitySpec{
 	"assessment.exams":           {mode: modeLastWriteWins},
 	"assessment.questions":       {mode: modeLastWriteWins},

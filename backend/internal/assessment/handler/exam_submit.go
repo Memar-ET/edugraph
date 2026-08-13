@@ -118,7 +118,13 @@ func (h *Handler) BulkGradeExam(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	resp, err := h.svc.BulkGradeExam(r.Context(), examID, req)
+	gradedBy, err := uuid.Parse(middleware.UserID(r.Context()))
+	if err != nil {
+		middleware.WriteError(w, apperrors.Internal(err))
+		return
+	}
+
+	resp, err := h.svc.BulkGradeExam(r.Context(), examID, gradedBy, req)
 	if err != nil {
 		middleware.WriteError(w, err)
 		return

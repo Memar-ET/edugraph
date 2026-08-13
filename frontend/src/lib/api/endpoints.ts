@@ -256,16 +256,17 @@ export async function listMyStudyPlans(): Promise<StudyPlan[]> {
 
 // ── Career (Capability: career matching) ──────────────────────────
 
-export async function getCareerMatches(studentId: string): Promise<CareerMatchResponse[]> {
-  const res = await apiClient.get<Envelope<CareerMatchResponse[]>>(
-    `/students/${studentId}/career/matches`,
-  )
+// Always the caller's own matches -- the backend resolves the student
+// from the JWT, not a path param (see backend/internal/career/handler
+// /handler.go), so these no longer take a studentId at all.
+export async function getCareerMatches(): Promise<CareerMatchResponse[]> {
+  const res = await apiClient.get<Envelope<CareerMatchResponse[]>>('/students/me/career/matches')
   return unwrap(res.data)
 }
 
-export async function generateCareerMatches(studentId: string): Promise<CareerMatchResponse[]> {
+export async function generateCareerMatches(): Promise<CareerMatchResponse[]> {
   const res = await apiClient.post<Envelope<CareerMatchResponse[]>>(
-    `/students/${studentId}/career/generate`,
+    '/students/me/career/generate',
   )
   return unwrap(res.data)
 }

@@ -132,7 +132,17 @@ type GradedAnswer struct {
 // (the established bulk-write pattern in this codebase -- no pgx.Batch/
 // CopyFrom used anywhere else either). ON CONFLICT makes "Save All"
 // idempotent (V020's unique constraint).
-func (r *Repository) SaveStudentAnswers(ctx context.Context, attemptID, studentID, schoolID uuid.UUID, answers []GradedAnswer) error {
+//
+// gradedBy is nil for the self-submit auto-grading path (deterministic,
+// derived straight from the answer key -- no human "changed a grade"
+// question to answer there) and set for BulkGradeExam (a teacher
+// actually typing in marks, checklist 10.3's "who changed a grade"
+// accountability case). When set and an answer carries real marks, one
+// row is appended to assessment.answer_grade_history per answer -- see
+// V031__soft_delete_and_audit_trail.sql. Append-only and unconditional
+// (not just on regrades) so the full history, including the first
+// grading, lives in one place.
+func (r *Repository) SaveStudentAnswers(ctx context.Context, attemptID, studentID, schoolID uuid.UUID, answers []GradedAnswer, gradedBy *uuid.UUID) error {
 	tx, err := r.pool.Begin(ctx)
 	if err != nil {
 		return fmt.Errorf("begin save answers tx: %w", err)
@@ -152,10 +162,27 @@ func (r *Repository) SaveStudentAnswers(ctx context.Context, attemptID, studentI
 			-- the same answer) must not erase the student's reported time
 			time_spent_secs = COALESCE(EXCLUDED.time_spent_secs, assessment.student_answers.time_spent_secs),
 			updated_at = now()
+		RETURNING id
+	`
+	const historyQ = `
+		INSERT INTO assessment.answer_grade_history (answer_id, marks_awarded, grading_notes, graded_by)
+		VALUES ($1, $2, $3, $4)
 	`
 	for _, a := range answers {
-		if _, err := tx.Exec(ctx, q, attemptID, studentID, a.QuestionID, schoolID, a.AnswerText, a.MarksAwarded, a.MarksPossible, a.Passed, a.TimeSpentSecs); err != nil {
+		var answerID uuid.UUID
+		row := tx.QueryRow(ctx, q, attemptID, studentID, a.QuestionID, schoolID, a.AnswerText, a.MarksAwarded, a.MarksPossible, a.Passed, a.TimeSpentSecs)
+		if err := row.Scan(&answerID); err != nil {
 			return fmt.Errorf("save answer for question %s: %w", a.QuestionID, err)
+		}
+		if gradedBy != nil && a.MarksAwarded != nil {
+			// grading_notes: nothing in the current grading DTOs
+			// captures a note yet (student_answers.grading_notes,
+			// V011, has never actually been written to by any path --
+			// confirmed by grep) -- always NULL here until a real UI
+			// for it exists, rather than fabricating a value.
+			if _, err := tx.Exec(ctx, historyQ, answerID, *a.MarksAwarded, nil, *gradedBy); err != nil {
+				return fmt.Errorf("record grade history for question %s: %w", a.QuestionID, err)
+			}
 		}
 	}
 

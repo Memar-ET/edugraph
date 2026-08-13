@@ -40,7 +40,7 @@ func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) Get(w http.ResponseWriter, r *http.Request) {
-	resp, err := h.svc.Get(r.Context(), chi.URLParam(r, "id"))
+	resp, err := h.svc.Get(r.Context(), middleware.UserID(r.Context()), middleware.Role(r.Context()), chi.URLParam(r, "id"))
 	if err != nil {
 		middleware.WriteError(w, err)
 		return
@@ -50,7 +50,7 @@ func (h *Handler) Get(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
 	p := pagination.FromRequest(r)
-	items, total, err := h.svc.List(r.Context(), r.URL.Query().Get("school_id"), p)
+	items, total, err := h.svc.List(r.Context(), middleware.UserID(r.Context()), middleware.Role(r.Context()), r.URL.Query().Get("school_id"), p)
 	if err != nil {
 		middleware.WriteError(w, err)
 		return

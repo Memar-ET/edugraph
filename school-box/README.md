@@ -50,6 +50,13 @@ engines).
 cd school-box
 cp ../.env.school-box.example ../.env.school-box
 # edit .env.school-box: set real SCHOOL_BOX_ID, SCHOOL_ID, passwords, CLOUD_SYNC_URL
+
+# From a machine with access to the Central Cloud database, once per box,
+# before its first boot -- registers this box's sync credential and
+# prints SCHOOL_BOX_SECRET exactly once (see .env.school-box.example):
+go run ../backend/cmd/provision-school-box -device-id <SCHOOL_BOX_ID> -school-id <SCHOOL_ID>
+# paste the printed SCHOOL_BOX_SECRET into .env.school-box
+
 ./scripts/install.sh
 ```
 

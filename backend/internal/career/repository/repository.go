@@ -106,6 +106,23 @@ func (r *Repository) GetByID(ctx context.Context, id string) (CareerPath, error)
 	return cp, err
 }
 
+// StudentIDByUserID resolves the caller's own students.id from their
+// users.id (JWT subject) -- see service.GenerateMatches/Matches, which
+// use this instead of trusting a client-supplied studentID, closing the
+// IDOR where any authenticated account could read or trigger generation
+// for another student's career matches by passing their id in the URL.
+func (r *Repository) StudentIDByUserID(ctx context.Context, userID string) (string, error) {
+	var studentID string
+	err := r.pool.QueryRow(ctx, `SELECT id FROM students WHERE user_id = $1`, userID).Scan(&studentID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return "", ErrNotFound
+	}
+	if err != nil {
+		return "", fmt.Errorf("lookup student by user id: %w", err)
+	}
+	return studentID, nil
+}
+
 // StudentSubjectAverages returns the student's average exam percentage per
 // subject family, used as the input signal for career matching.
 //

@@ -67,9 +67,10 @@ func main() {
 func loadConfig() (sync.Config, error) {
 	endpoint := os.Getenv("CLOUD_SYNC_ENDPOINT")
 	schoolBoxID := os.Getenv("SCHOOL_BOX_ID")
+	schoolBoxSecret := os.Getenv("SCHOOL_BOX_SECRET")
 	schoolID := os.Getenv("SCHOOL_ID")
-	if endpoint == "" || schoolBoxID == "" || schoolID == "" {
-		return sync.Config{}, errRequired("CLOUD_SYNC_ENDPOINT, SCHOOL_BOX_ID, SCHOOL_ID are all required")
+	if endpoint == "" || schoolBoxID == "" || schoolBoxSecret == "" || schoolID == "" {
+		return sync.Config{}, errRequired("CLOUD_SYNC_ENDPOINT, SCHOOL_BOX_ID, SCHOOL_BOX_SECRET, SCHOOL_ID are all required")
 	}
 
 	intervalMinutes, err := strconv.Atoi(envOr("SYNC_INTERVAL_MINUTES", "360"))
@@ -84,6 +85,7 @@ func loadConfig() (sync.Config, error) {
 	return sync.Config{
 		CloudSyncEndpoint: endpoint,
 		SchoolBoxID:       schoolBoxID,
+		SchoolBoxSecret:   schoolBoxSecret,
 		SchoolID:          schoolID,
 		SyncInterval:      time.Duration(intervalMinutes) * time.Minute,
 		PushBatchSize:     batchSize,

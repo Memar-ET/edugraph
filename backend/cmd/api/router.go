@@ -49,7 +49,7 @@ type handlers struct {
 	storage      *storagehandler.Handler
 }
 
-func newRouter(cfg config.Config, log *zap.Logger, verifier middleware.TokenVerifier, h handlers) http.Handler {
+func newRouter(cfg config.Config, log *zap.Logger, verifier middleware.TokenVerifier, deviceVerifier synchandler.DeviceVerifier, h handlers) http.Handler {
 	r := chi.NewRouter()
 
 	r.Use(middleware.Recover(log))
@@ -72,8 +72,13 @@ func newRouter(cfg config.Config, log *zap.Logger, verifier middleware.TokenVeri
 			r.With(authenticated).Get("/me", h.auth.Me)
 		})
 
-		// ── Sync (School Box devices, no per-user auth) ──────
+		// ── Sync (School Box devices, device-secret auth) ────
+		// Not middleware.Authenticate -- a School Box is headless,
+		// there's no human to hold a JWT. See
+		// internal/sync/handler/device_auth.go for the scheme and why
+		// this used to have no auth at all (checklist 10.1).
 		r.Route("/sync", func(r chi.Router) {
+			r.Use(synchandler.DeviceAuth(deviceVerifier))
 			r.Post("/push", h.sync.Push)
 			r.Get("/pull", h.sync.Pull)
 		})
@@ -104,14 +109,25 @@ func newRouter(cfg config.Config, log *zap.Logger, verifier middleware.TokenVeri
 
 			// ── Students ──────────────────────────────────────
 			r.Route("/students", func(r chi.Router) {
-				r.Get("/", h.student.List)
-				r.Get("/{id}", h.student.Get)
+				// List/Get are further scoped server-side to the caller's
+				// own school/region (student/service.go) -- the role gate
+				// here just keeps a bare "student" account off the
+				// roster entirely; there's no legitimate reason for one
+				// to browse other students.
+				r.With(middleware.RequireRole(roleTeacher, roleSchoolAdmin, roleRegionalAdmin, roleMinistryAdmin)).Get("/", h.student.List)
+				r.With(middleware.RequireRole(roleTeacher, roleSchoolAdmin, roleRegionalAdmin, roleMinistryAdmin)).Get("/{id}", h.student.Get)
 				r.With(middleware.RequireRole(roleSchoolAdmin, roleTeacher)).Post("/", h.student.Create)
 				r.With(middleware.RequireRole(roleSchoolAdmin, roleTeacher)).Patch("/{id}", h.student.Update)
 				r.With(middleware.RequireRole(roleSchoolAdmin)).Delete("/{id}", h.student.Delete)
 
-				r.Post("/{studentID}/career/generate", h.career.Generate)
-				r.Get("/{studentID}/career/matches", h.career.Matches)
+				// Own-student only, resolved server-side from the JWT
+				// (career/handler.go) -- was previously /{studentID}/
+				// career/generate|matches with the student id taken
+				// straight from the URL, an IDOR any authenticated
+				// account could use to read or trigger generation for
+				// someone else's career matches.
+				r.With(middleware.RequireRole(roleStudent)).Post("/me/career/generate", h.career.Generate)
+				r.With(middleware.RequireRole(roleStudent)).Get("/me/career/matches", h.career.Matches)
 
 				// Capability 3A: Subject Health Layer for the
 				// authenticated student's own dashboard. Static "me"
@@ -129,8 +145,11 @@ func newRouter(cfg config.Config, log *zap.Logger, verifier middleware.TokenVeri
 				// root-cause alerts, scoped to the caller's school.
 				// Static "me" takes precedence over {id} in chi.
 				r.With(middleware.RequireRole(roleTeacher, roleSchoolAdmin)).Get("/me/class-heatmap", h.assessment.GetClassHeatmap)
-				r.Get("/", h.teacher.List)
-				r.Get("/{id}", h.teacher.Get)
+				// List/Get scoped server-side the same way as /students
+				// above -- see student/service.go's Get/List for the
+				// shared rationale.
+				r.With(middleware.RequireRole(roleTeacher, roleSchoolAdmin, roleRegionalAdmin, roleMinistryAdmin)).Get("/", h.teacher.List)
+				r.With(middleware.RequireRole(roleTeacher, roleSchoolAdmin, roleRegionalAdmin, roleMinistryAdmin)).Get("/{id}", h.teacher.Get)
 				r.With(middleware.RequireRole(roleSchoolAdmin)).Post("/", h.teacher.Create)
 				r.With(middleware.RequireRole(roleSchoolAdmin)).Patch("/{id}", h.teacher.Update)
 				r.With(middleware.RequireRole(roleSchoolAdmin)).Delete("/{id}", h.teacher.Delete)
