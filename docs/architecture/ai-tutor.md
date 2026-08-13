@@ -1,5 +1,17 @@
 # AI Tutor (Capability 3C)
 
+## Scope status: official, in-scope feature (confirmed)
+
+The AI Tutor is confirmed as an official, in-scope platform feature —
+**not** out-of-scope work or unapproved scope creep. This is backed by
+the PRD itself (`edugraph-impl-plan.docx` already specifies it as
+Capability 3C, phase-tracked alongside gap analysis and the study
+planner — see below) and has been explicitly ratified as a decision, not
+left as an open question. This applies to the capability as a whole,
+including the not-yet-built practice-problem generation half (see "What's
+missing" below) — that's legitimate deferred roadmap work under an
+already-approved feature, not a separate scope question to revisit.
+
 ## Correcting the record: this *is* in the PRD
 
 An earlier review of this codebase concluded the AI Tutor "doesn't appear
@@ -52,9 +64,9 @@ the curriculum-approval graph sync (`syncCurriculumGraph` in
 `backend/internal/curriculum/repository/repository.go`) to also mirror
 key concepts, before any generation logic could be written against them.
 
-**Recommendation**: treat this as a real, scoped-out PRD feature for a
-future session — not something to quietly drop from the spec, and not
-something to build speculatively without a concrete need driving it.
+**Status**: confirmed official, deferred to a future session — not
+scope-in-question, not something to quietly drop from the PRD, and not
+something to build speculatively ahead of a concrete need driving it.
 
 ## Offline capability (checklist 5.2)
 
