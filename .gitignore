@@ -14,9 +14,11 @@ out/
 .env
 .env.local
 .env.*.local
+.env.school-box
 !.env.example
 !.env.development
 !.env.staging
+!.env.school-box.example
 
 # Go
 backend/vendor/
