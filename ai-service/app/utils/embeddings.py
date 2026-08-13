@@ -1,17 +1,18 @@
 """
-Local (offline-capable) text embedding generation -- Capability 2.1.
+Local (offline-capable) text embedding generation -- checklist 8.2, the
+embeddings half of "AI Models: Local vs. Cloud" (8.1's decision: build
+local-first by default -- see app/utils/llm_provider.py for the same
+decision applied to text generation).
 
 Uses fastembed, an ONNX-runtime-based library that runs entirely on CPU
 with no torch/GPU dependency and no cloud API call, matching the PRD's
-"School Box operates fully offline" requirement -- unlike the rest of this
-codebase's AI features (gap analysis, study plans, tutor, LLM-assisted CLO
-matching in clo_matcher_llm.py), which all call the Gemini cloud API and
-therefore stop working offline. This module is deliberately the one
-AI-dependent path in the codebase that keeps working with zero internet
-access, once the model weights are cached locally.
+"School Box operates fully offline" requirement. There's no cloud
+embedding alternative wired up anywhere in this codebase (unlike text
+generation's Gemini/Ollama pair) -- semantic matching only ever needs
+this local model, so there was nothing to make swappable.
 
 Model: settings.EMBEDDING_MODEL (default "intfloat/multilingual-e5-large",
-1024-dim -- see db/migrations/V028__fix_topic_embedding_dimension.sql for
+1024-dim -- see db/migrations/V028__fix_embedding_dimensions.sql for
 why 1024 and not the 768 originally assumed in V011/V025). Chosen for
 being genuinely multilingual (curriculum content and student answers may
 be in English or Amharic) rather than English-only, which ruled out

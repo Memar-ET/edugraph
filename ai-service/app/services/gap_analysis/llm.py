@@ -6,21 +6,13 @@ O(questions)): the symptom, root cause, and question text for every gap go
 up together, and one JSON response comes back with a per-gap explanation
 plus the exam-level narrative summary.
 
-Three tiers, cheapest-quality-loss first: Gemini (best quality, needs
-internet + an API key) -> Ollama (offline-capable local model, the School
-Box's actual operating condition -- see PRD's "AI inference must work with
-zero internet access") -> the caller's deterministic English summary
-(service.py's _fallback_summary), which always produces *something*.
-Same resilience contract at every tier: any failure (unset key, network
-error, unparseable response) returns (None, None) and the caller moves to
-the next tier -- an LLM hiccup must never fail the analysis.
-
-Amharic: Gemini's prompt asks for English + Amharic (bilingual explanations
-are the target design). Ollama gets an English-only prompt instead --
-verified directly (not assumed) that qwen2.5:7b-instruct and gemma2:9b
-both produce garbled, non-functional Amharic, and Amharic isn't mandatory
-at this stage (confirmed), so the offline tier trades the bilingual
-target for actually-usable English rather than ship broken text.
+Provider selection (local vs. cloud, checklist 8.1/8.3) is entirely
+app/utils/llm_provider.py's job -- this module just builds the prompt
+(varying it by provider.supports_amharic) and parses the response. If
+neither provider produces anything, the caller falls back further to a
+deterministic English summary (service.py's _fallback_summary), which
+always produces *something* -- an LLM hiccup, or simply not having any
+LLM configured, must never fail the analysis.
 """
 
 from __future__ import annotations
@@ -28,22 +20,11 @@ from __future__ import annotations
 import json
 from typing import Optional
 
-import httpx
 import structlog
 
-from app.core.config import settings
+from app.utils.llm_provider import LLMProvider, generate_with_fallback
 
 logger = structlog.get_logger()
-
-GEMINI_MODEL = "gemini-flash-latest"
-GEMINI_URL = f"https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_MODEL}:generateContent"
-TIMEOUT_SECONDS = 30.0
-# Local inference on modest School Box hardware is slow -- a 7B model doing
-# a multi-gap synthesis can genuinely take tens of seconds on CPU, so this
-# tier gets a longer budget than the cloud call rather than reusing
-# TIMEOUT_SECONDS and risking false negatives on a box that's just slow,
-# not actually down.
-OLLAMA_TIMEOUT_SECONDS = 90.0
 
 # Cap how many gaps get an LLM explanation -- the worst ones matter most,
 # and this bounds prompt size on a 50-question final where a student had
@@ -58,7 +39,7 @@ def _build_prompt(
     grade_level: int,
     percentage: Optional[float],
     gap_contexts: list[dict],
-    english_only: bool = False,
+    provider: LLMProvider,
 ) -> str:
     gap_lines = []
     for g in gap_contexts:
@@ -76,16 +57,16 @@ def _build_prompt(
             line += " No broken prerequisite was found; the gap is in this topic itself."
         gap_lines.append(line)
 
-    if english_only:
-        explanation_instruction = "Write each explanation in simple English only."
-        summary_instruction = "Also write examSummary: 2-3 sentences (English only)"
-        shape_hint = '{"gaps": [{"index": <int>, "explanation": "<en>"}], "examSummary": "<en>"}.'
-    else:
+    if provider.supports_amharic:
         explanation_instruction = (
             "Write each explanation in English followed by the same message in Amharic."
         )
         summary_instruction = "Also write examSummary: 2-3 sentences (English, then Amharic)"
         shape_hint = '{"gaps": [{"index": <int>, "explanation": "<en + am>"}], "examSummary": "<en + am>"}.'
+    else:
+        explanation_instruction = "Write each explanation in simple English only."
+        summary_instruction = "Also write examSummary: 2-3 sentences (English only)"
+        shape_hint = '{"gaps": [{"index": <int>, "explanation": "<en>"}], "examSummary": "<en>"}.'
 
     return (
         "You are a diagnostic tutor for Ethiopian K-12 students. A student "
@@ -122,58 +103,6 @@ def _parse_response(text: str) -> tuple[Optional[dict[int, str]], Optional[str]]
     return (explanations or None), summary
 
 
-async def _synthesize_via_gemini(prompt: str) -> tuple[Optional[dict[int, str]], Optional[str]]:
-    if not settings.GEMINI_API_KEY:
-        return None, None
-    try:
-        async with httpx.AsyncClient(timeout=TIMEOUT_SECONDS) as client:
-            resp = await client.post(
-                GEMINI_URL,
-                params={"key": settings.GEMINI_API_KEY},
-                json={
-                    "contents": [{"parts": [{"text": prompt}]}],
-                    "generationConfig": {"responseMimeType": "application/json"},
-                },
-            )
-            resp.raise_for_status()
-            data = resp.json()
-            text = data["candidates"][0]["content"]["parts"][0]["text"]
-            return _parse_response(text)
-    except Exception:  # noqa: BLE001 -- never let an LLM hiccup break analysis
-        logger.exception("gap_analysis.gemini_request_failed")
-        return None, None
-
-
-def _ollama_url() -> str:
-    host = settings.OLLAMA_HOST
-    if "://" not in host:
-        host = "http://" + host
-    return host.rstrip("/") + "/api/generate"
-
-
-async def _synthesize_via_ollama(prompt: str) -> tuple[Optional[dict[int, str]], Optional[str]]:
-    """Offline-capable fallback -- see module docstring. Ollama's `format:
-    "json"` constrains output to valid JSON the same way Gemini's
-    responseMimeType does, so _parse_response works unchanged on either."""
-    try:
-        async with httpx.AsyncClient(timeout=OLLAMA_TIMEOUT_SECONDS) as client:
-            resp = await client.post(
-                _ollama_url(),
-                json={
-                    "model": settings.OLLAMA_MODEL,
-                    "prompt": prompt,
-                    "format": "json",
-                    "stream": False,
-                },
-            )
-            resp.raise_for_status()
-            data = resp.json()
-            return _parse_response(data["response"])
-    except Exception:  # noqa: BLE001 -- never let an LLM hiccup break analysis
-        logger.exception("gap_analysis.ollama_request_failed")
-        return None, None
-
-
 async def synthesize_insights(
     exam_title: str,
     exam_scope: str,
@@ -186,25 +115,25 @@ async def synthesize_insights(
     gap_contexts: [{"index", "question_text", "symptom_topic",
     "root_cause_topic" (nullable), "root_cause_grade" (nullable),
     "severity"}]. Returns ({index: explanation}, exam_summary, model_used)
-    -- model_used is None (not a fixed constant) when every tier failed, so
-    the caller can honestly record which model actually produced the text
-    (or that none did) instead of assuming Gemini.
+    -- model_used is None (not a fixed constant) when every provider
+    failed, so the caller can honestly record which model actually
+    produced the text (or that none did) instead of assuming one.
     """
     if not gap_contexts:
         return None, None, None
 
-    prompt = _build_prompt(exam_title, exam_scope, subject_code, grade_level, percentage, gap_contexts)
+    def build(provider: LLMProvider) -> str:
+        return _build_prompt(exam_title, exam_scope, subject_code, grade_level, percentage, gap_contexts, provider)
 
-    explanations, summary = await _synthesize_via_gemini(prompt)
-    if explanations or summary:
-        return explanations, summary, GEMINI_MODEL
+    text, provider_used = await generate_with_fallback(build, json_mode=True)
+    if text is None or provider_used is None:
+        return None, None, None
 
-    # English-only prompt for Ollama -- see module docstring.
-    ollama_prompt = _build_prompt(
-        exam_title, exam_scope, subject_code, grade_level, percentage, gap_contexts, english_only=True
-    )
-    explanations, summary = await _synthesize_via_ollama(ollama_prompt)
-    if explanations or summary:
-        return explanations, summary, settings.OLLAMA_MODEL
-
-    return None, None, None
+    try:
+        explanations, summary = _parse_response(text)
+    except Exception:  # noqa: BLE001 -- a malformed response must never fail the analysis
+        logger.exception("gap_analysis.response_parse_failed", model=provider_used.model_name)
+        return None, None, None
+    if not explanations and not summary:
+        return None, None, None
+    return explanations, summary, provider_used.model_name

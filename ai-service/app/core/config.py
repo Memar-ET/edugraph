@@ -30,11 +30,17 @@ class Settings(BaseSettings):
 
     # ── AI SERVICE ───────────────────────────
     AI_SERVICE_URL: str = "ai-service:8000"
+    # checklist 8.1's decision: build for local by default, matching the
+    # PRD's offline School Box requirement -- "local" (Ollama) is the
+    # primary/assumed provider everywhere text generation happens
+    # (app/utils/llm_provider.py), "cloud" (Gemini) is a config-only
+    # swap for deployments that want it, not the default. Either way the
+    # provider NOT selected is still tried as a resilience fallback if
+    # the selected one is unreachable -- see get_llm_provider().
+    LLM_PROVIDER: str = "local"
     OLLAMA_HOST: str = "ollama:11434"
-    # Capability 3A offline fallback: tried when Gemini is unset/unreachable,
-    # before falling back further to the deterministic English summary (see
-    # gap_analysis/llm.py). Matches the model already referenced in
-    # school-box/compose/docker-compose.yml's ollama service comment.
+    # See app/utils/llm_provider.py. Matches the model already referenced
+    # in school-box/compose/docker-compose.yml's ollama service comment.
     OLLAMA_MODEL: str = "qwen2.5:7b-instruct-q4_K_M"
     EMBEDDING_MODEL: str = "intfloat/multilingual-e5-large"
     # Must match this model's real output width -- see
@@ -49,9 +55,10 @@ class Settings(BaseSettings):
     # treated as no match (falls through to the keyword/LLM matcher).
     CLO_MATCH_AUTO_ALIGN_THRESHOLD: float = 0.85
     CLO_MATCH_NEEDS_REVIEW_THRESHOLD: float = 0.65
-    # Capability 2A: Gemini-backed CLO matcher (exam_parser/clo_matcher_llm.py).
-    # Empty means "not configured" -- the parser falls back to the plain
-    # keyword matcher, never a hard failure.
+    # The cloud provider option for app/utils/llm_provider.py (LLM_PROVIDER
+    # above) and the Capability 2A Gemini-backed CLO matcher. Empty means
+    # "not configured" -- every caller treats that as unavailable and
+    # falls back rather than failing hard.
     GEMINI_API_KEY: str = ""
 
     @property

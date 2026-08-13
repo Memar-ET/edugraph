@@ -16,41 +16,36 @@ All of it is injected as context: "the student recently failed a question
 on this because they don't understand X -- tailor the answer to bridge
 that specific gap."
 
-Two tiers -- Gemini first, falling back to a local Ollama model when
-Gemini is unset/unreachable, same offline-capability rationale as
-gap_analysis/llm.py. Unlike the pipeline LLM calls there's no third,
-deterministic-text tier here: an open-ended tutoring answer can't be
-synthesized without an LLM, so TutorUnavailable (-> HTTP 503) is still
-raised, just only once BOTH tiers have failed -- a tutor that can't
-answer shouldn't pretend to.
+Provider selection (local vs. cloud, checklist 8.1/8.3) is entirely
+app/utils/llm_provider.py's job, same as gap_analysis and study_plan.
+Unlike those, there's no third, deterministic-text tier here: an
+open-ended tutoring answer can't be synthesized without an LLM, so
+TutorUnavailable (-> HTTP 503) is still raised, just only once BOTH
+providers have failed -- a tutor that can't answer shouldn't pretend to.
 
-Amharic via Ollama: qwen2.5/gemma2 (the models actually tested against
-this deployment) both produce garbled, non-functional Amharic -- verified
-directly, not assumed. Rather than show a student broken Ge'ez-script
-text, the Ollama tier always answers in English regardless of the
-requested language, and the response notes that Amharic needs a
-cloud connection. Gemini's Amharic output is unaffected by this.
+Amharic: LLMProvider.supports_amharic tells this module whether to
+request the actual requested language or force English -- qwen2.5/
+gemma2 (the local models actually tested against this deployment) both
+produce garbled, non-functional Amharic (verified directly, not
+assumed). Rather than show a student broken Ge'ez-script text, a
+non-Amharic-capable provider always answers in English regardless of
+what was requested, and the response notes that Amharic needs a cloud
+connection.
 """
 
 from __future__ import annotations
 
 import re
-from typing import Optional
 
-import httpx
 import structlog
 
-from app.core.config import settings
 from app.db import neo4j as neo4j_db
 from app.db import postgres_gap as gap_db
 from app.db import postgres_tutor as db
+from app.utils.llm_provider import LLMProvider, generate_with_fallback
 
 logger = structlog.get_logger()
 
-GEMINI_MODEL = "gemini-flash-latest"
-GEMINI_URL = f"https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_MODEL}:generateContent"
-TIMEOUT_SECONDS = 30.0
-OLLAMA_TIMEOUT_SECONDS = 90.0  # local CPU inference is slow -- see gap_analysis/llm.py
 MAX_TOPICS = 3
 _AMHARIC_UNAVAILABLE_NOTE = (
     "\n\n(Offline mode: this answer was generated locally and is only "
@@ -66,7 +61,7 @@ _STOPWORDS = frozenset(
 
 
 class TutorUnavailable(Exception):
-    """Raised when both Gemini and Ollama are unset/unreachable."""
+    """Raised when both LLM providers (configured + fallback) are unset/unreachable."""
 
 
 def _tokenize(text: str) -> set[str]:
@@ -106,45 +101,6 @@ def _build_prompt(grade_level, context_parts: list[str], question: str, lang_ins
         "explanation. If the context shows a broken prerequisite, start from "
         f"that prerequisite and build up to their question. {lang_instruction}"
     )
-
-
-async def _call_gemini(prompt: str) -> Optional[str]:
-    if not settings.GEMINI_API_KEY:
-        return None
-    try:
-        async with httpx.AsyncClient(timeout=TIMEOUT_SECONDS) as client:
-            resp = await client.post(
-                GEMINI_URL,
-                params={"key": settings.GEMINI_API_KEY},
-                json={"contents": [{"parts": [{"text": prompt}]}]},
-            )
-            resp.raise_for_status()
-            data = resp.json()
-            return data["candidates"][0]["content"]["parts"][0]["text"]
-    except Exception:  # noqa: BLE001 -- caller falls back to Ollama
-        logger.exception("tutor.gemini_request_failed")
-        return None
-
-
-def _ollama_url() -> str:
-    host = settings.OLLAMA_HOST
-    if "://" not in host:
-        host = "http://" + host
-    return host.rstrip("/") + "/api/generate"
-
-
-async def _call_ollama(prompt: str) -> Optional[str]:
-    try:
-        async with httpx.AsyncClient(timeout=OLLAMA_TIMEOUT_SECONDS) as client:
-            resp = await client.post(
-                _ollama_url(),
-                json={"model": settings.OLLAMA_MODEL, "prompt": prompt, "stream": False},
-            )
-            resp.raise_for_status()
-            return resp.json()["response"]
-    except Exception:  # noqa: BLE001 -- caller raises TutorUnavailable
-        logger.exception("tutor.ollama_request_failed")
-        return None
 
 
 async def ask(student_id: str, question: str, language: str = "en") -> dict:
@@ -201,26 +157,17 @@ async def ask(student_id: str, question: str, language: str = "en") -> dict:
     if prereq_lines:
         context_parts.append("Prerequisite chain for the main topic:\n" + "\n".join(prereq_lines))
 
-    prompt = _build_prompt(grade_level, context_parts, question, _lang_instruction(language))
+    def build(provider: LLMProvider) -> str:
+        effective_language = language if provider.supports_amharic else "en"
+        return _build_prompt(grade_level, context_parts, question, _lang_instruction(effective_language))
 
-    answer = await _call_gemini(prompt)
-    model_used = GEMINI_MODEL if answer else None
-
-    if answer is None:
-        # Ollama can't do Amharic (verified directly -- see module
-        # docstring), so force English here regardless of what was
-        # requested rather than hand a student garbled Ge'ez-script text.
-        ollama_prompt = (
-            prompt if language == "en" else _build_prompt(grade_level, context_parts, question, _lang_instruction("en"))
-        )
-        answer = await _call_ollama(ollama_prompt)
-        if answer is not None:
-            model_used = settings.OLLAMA_MODEL
-            if language != "en":
-                answer += _AMHARIC_UNAVAILABLE_NOTE
-
-    if answer is None:
+    answer, provider_used = await generate_with_fallback(build)
+    if answer is None or provider_used is None:
         raise TutorUnavailable("the tutoring model is unreachable")
+
+    model_used = provider_used.model_name
+    if not provider_used.supports_amharic and language != "en":
+        answer += _AMHARIC_UNAVAILABLE_NOTE
 
     logger.info(
         "tutor.answered",
