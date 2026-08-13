@@ -10,6 +10,7 @@ sharing the one process-wide pool.
 from __future__ import annotations
 
 import json
+from datetime import date
 from typing import Optional
 
 import asyncpg
@@ -86,6 +87,15 @@ async def fetch_prereq_edges_pg(topic_ids: list[str]) -> list[tuple[str, str]]:
         topic_ids,
     )
     return [(str(r["topic_id"]), str(r["prerequisite_id"])) for r in rows]
+
+
+async def fetch_target_exam_due_date(target_exam_id: str) -> Optional[date]:
+    """For Step 5's "appears on your exam in N days" framing -- None if
+    the exam has no due_date set (nullable, V011), which just means the
+    enrichment prompt omits the countdown."""
+    pool = await get_pool()
+    row = await pool.fetchrow("SELECT due_date FROM assessment.exams WHERE id = $1", target_exam_id)
+    return row["due_date"] if row else None
 
 
 async def fetch_student_school(student_id: str) -> Optional[str]:

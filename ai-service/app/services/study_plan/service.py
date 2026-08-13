@@ -3,30 +3,45 @@ Capability 3B: The Study Plan Generator ("Personal Tutor").
 
 Input is the rich 3A output, not a generic failed-topic list: each
 students.gap_records row carries the symptom topic, the root-cause topic
-the prerequisite walk found, and the Gemini-written explanation of WHY
-the student missed that question.
+the prerequisite walk found, and the explanation of WHY the student
+missed that question (gap_analysis's own Gemini/Ollama synthesis).
 
-Ordering is a topological sort over the prerequisite graph (Neo4j
-HAS_PREREQUISITE edges first, Postgres topic_prerequisites as fallback --
-same dual-path as the 3A root-cause walk), augmented with the implied
-"root cause before symptom" edges 3A already proved per-gap. So the plan
-always fixes foundations before the topics built on them, even when the
-two stores disagree.
+Ordering (PRD Steps 1-4) is a topological sort over the prerequisite
+graph (Neo4j HAS_PREREQUISITE edges first, Postgres topic_prerequisites
+as fallback -- same dual-path as the 3A root-cause walk), augmented with
+the implied "root cause before symptom" edges 3A already proved per-gap.
+So the plan always fixes foundations before the topics built on them,
+even when the two stores disagree. Implemented as a hand-rolled Kahn's
+algorithm rather than the PRD's specified Neo4j GDS
+(gds.dag.topologicalSort) -- GDS isn't available on Neo4j Community
+Edition, which is what this deployment actually runs; Kahn's algorithm
+over the same edge set produces the same topological guarantee without
+the plugin dependency. Similarly, the PRD's Step 3 prioritization
+(exam date x CLO mandatory flag x severity) is implemented as severity
+only today -- exam date and mandatory-flag weighting aren't wired in.
+The PRD's declared daily-availability input isn't read either;
+HOURS_PER_DAY below is a fixed constant.
 
-Output: a day-by-day plan where every study block carries the Gemini
-explanation of why that topic is on the list, stored in
-students.study_plans.plan_data (JSONB).
+Step 5 (LLM enrichment) previously didn't exist in this codebase at all
+-- see study_plan/llm.py for the actual implementation now wired in
+(Gemini -> Ollama, additive to each block's deterministic "why" text,
+never blocks generation if both tiers fail).
+
+Output: a day-by-day plan stored in students.study_plans.plan_data
+(JSONB).
 """
 
 from __future__ import annotations
 
 from collections import deque
+from datetime import date
 from typing import Optional
 
 import structlog
 
 from app.db import neo4j as neo4j_db
 from app.db import postgres_studyplan as db
+from app.services.study_plan.llm import enrich_days
 
 logger = structlog.get_logger()
 
@@ -59,6 +74,23 @@ async def process_study_plan_job(payload: dict) -> None:
     ordered = await _topological_order(topics, gaps, meta)
     days, total_hours = _pack_days(ordered, topics, meta)
 
+    exam_days_away = None
+    if target_exam_id:
+        due = await db.fetch_target_exam_due_date(target_exam_id)
+        if due:
+            exam_days_away = max((due - date.today()).days, 0)
+
+    # Step 5 (PRD Capability 3B): per-day plain-language goals -- see
+    # study_plan/llm.py. Additive: each block's existing "why" text stays
+    # as-is and is the only thing the frontend needs if this fails, so a
+    # missing/unreachable LLM never blocks plan generation.
+    day_goals, day_goals_model = await enrich_days(days, exam_days_away)
+    if day_goals:
+        for d in days:
+            goal = day_goals.get(d["day"])
+            if goal:
+                d["dayGoal"] = goal
+
     plan_data = {
         "generatedFrom": {
             "gapCount": len(gaps),
@@ -67,6 +99,7 @@ async def process_study_plan_job(payload: dict) -> None:
         },
         "days": days,
         "summary": _plan_summary(days, topics, meta),
+        "dayGoalsModel": day_goals_model,
     }
     plan_id = await db.insert_study_plan(
         student_id=student_id,
@@ -84,6 +117,7 @@ async def process_study_plan_job(payload: dict) -> None:
         topics=len(ordered),
         days=len(days),
         hours=round(total_hours, 1),
+        day_goals_model=day_goals_model,
     )
 
 
