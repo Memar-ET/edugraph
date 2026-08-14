@@ -31,6 +31,13 @@ var ErrNotFound = errors.New("not found")
 // out of scope for fixing the actually-broken feature; see the
 // career_matcher/service.py docstring on the ai-service side for the
 // same call.
+//
+// A since-renumbered V032__cleanup_old_curriculum_tables.sql (merged
+// from a different work stream, originally V012) tried to DROP these
+// two tables outright, on the stated but unmet precondition that this
+// repository had already migrated off them -- see that migration's own
+// comment. Do not drop career_paths_v010/career_matches_v010 without
+// actually migrating this file to the careers.* schema first.
 
 type CareerPath struct {
 	ID               string

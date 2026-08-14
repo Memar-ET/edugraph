@@ -286,7 +286,7 @@ func (r *Repository) ApproveAndPromote(
 			if c.Code == "" {
 				continue
 			}
-			if err := r.upsertCLO(ctx, tx, subjectCode, gradeLevel, moeVersion, c, closEmbedded, &embeddingTargets); err != nil {
+			if err := r.upsertCLO(ctx, tx, subjectCode, gradeLevel, moeVersion, c, userID, closEmbedded, &embeddingTargets); err != nil {
 				return nil, nil, err
 			}
 			n, err := r.mapCLOToAllTopics(ctx, tx, pu.topics, c, userID)
@@ -393,15 +393,17 @@ func (r *Repository) promoteOneTopic(
 	var topicID uuid.UUID
 	err := tx.QueryRow(ctx, `
 		INSERT INTO curriculum.topics
-			(unit_id, subject_code, grade_level, sequence_order, title_en, description, key_concepts, parent_topic_id)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+			(unit_id, subject_code, grade_level, sequence_order, title_en, description, key_concepts, parent_topic_id, updated_by)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
 		ON CONFLICT (unit_id, sequence_order) DO UPDATE SET
 			title_en        = EXCLUDED.title_en,
 			description     = EXCLUDED.description,
 			key_concepts    = EXCLUDED.key_concepts,
-			parent_topic_id = EXCLUDED.parent_topic_id
+			parent_topic_id = EXCLUDED.parent_topic_id,
+			updated_by      = EXCLUDED.updated_by,
+			updated_at      = now()
 		RETURNING id
-	`, unitID, subjectCode, gradeLevel, t.SequenceOrder, t.TitleEn, nullIfEmpty(t.RawText), t.KeyConcepts, parentID).Scan(&topicID)
+	`, unitID, subjectCode, gradeLevel, t.SequenceOrder, t.TitleEn, nullIfEmpty(t.RawText), t.KeyConcepts, parentID, userID).Scan(&topicID)
 	if err != nil {
 		return promotedTopic{}, 0, 0, fmt.Errorf("upsert topic %q: %w", t.TitleEn, err)
 	}
@@ -417,7 +419,7 @@ func (r *Repository) promoteOneTopic(
 		if c.Code == "" {
 			continue // can't upsert a CLO without its natural key
 		}
-		if err := r.upsertCLO(ctx, tx, subjectCode, gradeLevel, moeVersion, c, closEmbedded, embeddingTargets); err != nil {
+		if err := r.upsertCLO(ctx, tx, subjectCode, gradeLevel, moeVersion, c, userID, closEmbedded, embeddingTargets); err != nil {
 			return promotedTopic{}, 0, 0, err
 		}
 		if err := r.upsertTopicCLOMapping(ctx, tx, topicID, c.Code, userID, "human_confirmed"); err != nil {
@@ -447,17 +449,19 @@ func (r *Repository) promoteOneTopic(
 // in the unit) via separate calls to upsertTopicCLOMapping.
 func (r *Repository) upsertCLO(
 	ctx context.Context, tx pgx.Tx, subjectCode string, gradeLevel int, moeVersion string,
-	c dto.ParsedCLO, closEmbedded map[string]bool, embeddingTargets *[]EmbeddingTarget,
+	c dto.ParsedCLO, userID uuid.UUID, closEmbedded map[string]bool, embeddingTargets *[]EmbeddingTarget,
 ) error {
 	_, err := tx.Exec(ctx, `
 		INSERT INTO curriculum.clos
-			(code, subject_code, grade_level, description_en, bloom_level, is_mandatory, moe_version)
-		VALUES ($1, $2, $3, $4, $5, $6, $7)
+			(code, subject_code, grade_level, description_en, bloom_level, is_mandatory, moe_version, updated_by)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
 		ON CONFLICT (code) DO UPDATE SET
 			description_en = EXCLUDED.description_en,
 			bloom_level    = EXCLUDED.bloom_level,
-			is_mandatory   = EXCLUDED.is_mandatory
-	`, c.Code, subjectCode, gradeLevel, c.Description, nullIfEmpty(c.BloomLevel), c.Mandatory, moeVersion)
+			is_mandatory   = EXCLUDED.is_mandatory,
+			updated_by     = EXCLUDED.updated_by,
+			updated_at     = now()
+	`, c.Code, subjectCode, gradeLevel, c.Description, nullIfEmpty(c.BloomLevel), c.Mandatory, moeVersion, userID)
 	if err != nil {
 		return fmt.Errorf("upsert clo %q: %w", c.Code, err)
 	}
