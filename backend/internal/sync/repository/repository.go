@@ -3,9 +3,11 @@ package repository
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"time"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -72,6 +74,9 @@ func (r *Repository) ListApplied(ctx context.Context, schoolID string, since tim
 		}
 		logs = append(logs, l)
 	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("list applied sync logs: %w", err)
+	}
 	return logs, nil
 }
 
@@ -104,7 +109,44 @@ func (r *Repository) ClaimPending(ctx context.Context, limit int) ([]SyncLog, er
 		}
 		logs = append(logs, l)
 	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("claim pending sync logs: %w", err)
+	}
 	return logs, nil
+}
+
+// DeviceCredential is one School Box's registered identity -- see
+// V030__sync_device_credentials.sql and cmd/provision-school-box, which
+// is what actually creates these rows.
+type DeviceCredential struct {
+	DeviceID   string
+	SchoolID   string
+	SecretHash string
+	RevokedAt  *time.Time
+}
+
+var ErrDeviceNotFound = errors.New("device not found")
+
+func (r *Repository) GetDeviceCredential(ctx context.Context, deviceID string) (DeviceCredential, error) {
+	const q = `SELECT device_id, school_id, secret_hash, revoked_at
+		FROM sync.device_credentials WHERE device_id = $1`
+	var c DeviceCredential
+	err := r.pool.QueryRow(ctx, q, deviceID).Scan(&c.DeviceID, &c.SchoolID, &c.SecretHash, &c.RevokedAt)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return DeviceCredential{}, ErrDeviceNotFound
+	}
+	if err != nil {
+		return DeviceCredential{}, fmt.Errorf("get device credential: %w", err)
+	}
+	return c, nil
+}
+
+// TouchDeviceLastSeen is best-effort operational visibility (which
+// devices are actually calling in), never a reason to fail a sync
+// request -- callers should log a failure here, not propagate it.
+func (r *Repository) TouchDeviceLastSeen(ctx context.Context, deviceID string) error {
+	_, err := r.pool.Exec(ctx, `UPDATE sync.device_credentials SET last_seen_at = now() WHERE device_id = $1`, deviceID)
+	return err
 }
 
 func scanLog(row interface {

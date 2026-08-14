@@ -93,8 +93,13 @@ func (h *Handler) GetExam(w http.ResponseWriter, r *http.Request) {
 		middleware.WriteError(w, apperrors.BadRequest("invalid exam id"))
 		return
 	}
+	userID, err := callerID(r)
+	if err != nil {
+		middleware.WriteError(w, apperrors.Internal(err))
+		return
+	}
 
-	resp, err := h.svc.GetExam(r.Context(), examID)
+	resp, err := h.svc.GetExam(r.Context(), userID, examID)
 	if err != nil {
 		middleware.WriteError(w, err)
 		return

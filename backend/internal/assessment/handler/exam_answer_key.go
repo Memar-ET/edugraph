@@ -22,6 +22,11 @@ func (h *Handler) UploadAnswerKey(w http.ResponseWriter, r *http.Request) {
 		middleware.WriteError(w, apperrors.BadRequest("invalid exam id"))
 		return
 	}
+	userID, err := callerID(r)
+	if err != nil {
+		middleware.WriteError(w, apperrors.Internal(err))
+		return
+	}
 
 	if err := r.ParseMultipartForm(maxAnswerKeyUploadBytes); err != nil {
 		middleware.WriteError(w, apperrors.BadRequest("invalid multipart form data"))
@@ -41,7 +46,7 @@ func (h *Handler) UploadAnswerKey(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	resp, err := h.svc.UploadAnswerKey(r.Context(), examID, header.Filename, mimeType, file)
+	resp, err := h.svc.UploadAnswerKey(r.Context(), userID, examID, header.Filename, mimeType, file)
 	if err != nil {
 		middleware.WriteError(w, err)
 		return

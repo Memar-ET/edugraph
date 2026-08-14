@@ -26,13 +26,23 @@ func (s *Service) Create(ctx context.Context, createdBy string, req dto.CreateJo
 	return toResponse(j), nil
 }
 
-func (s *Service) Get(ctx context.Context, id string) (dto.JobResponse, error) {
+// Get is scoped to the caller's own job (checklist 11.3 finding: this
+// used to take no userID at all, letting any authenticated caller read
+// any job's payload/result by id -- List already correctly used
+// ListMine/ListByCreator, this was the one path that didn't match it).
+// A worker updating status (UpdateStatus) legitimately has no "creator"
+// identity of its own, so that path is intentionally left unscoped --
+// see its own doc comment.
+func (s *Service) Get(ctx context.Context, userID, id string) (dto.JobResponse, error) {
 	j, err := s.repo.GetByID(ctx, id)
 	if errors.Is(err, repository.ErrNotFound) {
 		return dto.JobResponse{}, apperrors.NotFound("job not found")
 	}
 	if err != nil {
 		return dto.JobResponse{}, apperrors.Internal(err)
+	}
+	if j.CreatedBy == nil || *j.CreatedBy != userID {
+		return dto.JobResponse{}, apperrors.NotFound("job not found")
 	}
 	return toResponse(j), nil
 }

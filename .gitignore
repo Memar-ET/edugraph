@@ -14,9 +14,11 @@ out/
 .env
 .env.local
 .env.*.local
+.env.school-box
 !.env.example
 !.env.development
 !.env.staging
+!.env.school-box.example
 
 # Go
 backend/vendor/
@@ -66,6 +68,9 @@ coverage/
 *.cover
 .coverage
 htmlcov/
+frontend/test-results/
+frontend/playwright-report/
+frontend/tests/e2e/.seeded-exam.json
 
 # Docker
 .dockerignore

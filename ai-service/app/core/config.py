@@ -30,11 +30,35 @@ class Settings(BaseSettings):
 
     # ── AI SERVICE ───────────────────────────
     AI_SERVICE_URL: str = "ai-service:8000"
+    # checklist 8.1's decision: build for local by default, matching the
+    # PRD's offline School Box requirement -- "local" (Ollama) is the
+    # primary/assumed provider everywhere text generation happens
+    # (app/utils/llm_provider.py), "cloud" (Gemini) is a config-only
+    # swap for deployments that want it, not the default. Either way the
+    # provider NOT selected is still tried as a resilience fallback if
+    # the selected one is unreachable -- see get_llm_provider().
+    LLM_PROVIDER: str = "local"
     OLLAMA_HOST: str = "ollama:11434"
+    # See app/utils/llm_provider.py. Matches the model already referenced
+    # in school-box/compose/docker-compose.yml's ollama service comment.
+    OLLAMA_MODEL: str = "qwen2.5:7b-instruct-q4_K_M"
     EMBEDDING_MODEL: str = "intfloat/multilingual-e5-large"
-    # Capability 2A: Gemini-backed CLO matcher (exam_parser/clo_matcher_llm.py).
-    # Empty means "not configured" -- the parser falls back to the plain
-    # keyword matcher, never a hard failure.
+    # Must match this model's real output width -- see
+    # db/migrations/V028__fix_embedding_dimensions.sql. Checked defensively
+    # in embeddings-dependent code paths so a future EMBEDDING_MODEL swap
+    # to a different-width model fails loudly instead of silently
+    # corrupting the pgvector columns.
+    EMBEDDING_DIM: int = 1024
+    # Capability 5.1 (exam-to-CLO semantic matching) thresholds, taken
+    # directly from PRD Section 5.1: >=0.85 cosine similarity auto-aligns a
+    # question to a CLO, 0.65-0.84 is flagged for teacher review, <0.65 is
+    # treated as no match (falls through to the keyword/LLM matcher).
+    CLO_MATCH_AUTO_ALIGN_THRESHOLD: float = 0.85
+    CLO_MATCH_NEEDS_REVIEW_THRESHOLD: float = 0.65
+    # The cloud provider option for app/utils/llm_provider.py (LLM_PROVIDER
+    # above) and the Capability 2A Gemini-backed CLO matcher. Empty means
+    # "not configured" -- every caller treats that as unavailable and
+    # falls back rather than failing hard.
     GEMINI_API_KEY: str = ""
 
     @property

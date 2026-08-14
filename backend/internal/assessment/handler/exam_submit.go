@@ -52,8 +52,13 @@ func (h *Handler) ListQuestionsForGrading(w http.ResponseWriter, r *http.Request
 		middleware.WriteError(w, apperrors.BadRequest("invalid exam id"))
 		return
 	}
+	userID, err := callerID(r)
+	if err != nil {
+		middleware.WriteError(w, apperrors.Internal(err))
+		return
+	}
 
-	questions, err := h.svc.ListQuestionsForGrading(r.Context(), examID)
+	questions, err := h.svc.ListQuestionsForGrading(r.Context(), userID, examID)
 	if err != nil {
 		middleware.WriteError(w, err)
 		return
@@ -118,7 +123,13 @@ func (h *Handler) BulkGradeExam(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	resp, err := h.svc.BulkGradeExam(r.Context(), examID, req)
+	gradedBy, err := uuid.Parse(middleware.UserID(r.Context()))
+	if err != nil {
+		middleware.WriteError(w, apperrors.Internal(err))
+		return
+	}
+
+	resp, err := h.svc.BulkGradeExam(r.Context(), examID, gradedBy, req)
 	if err != nil {
 		middleware.WriteError(w, err)
 		return

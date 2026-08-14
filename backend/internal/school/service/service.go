@@ -42,7 +42,29 @@ func (s *Service) Get(ctx context.Context, id string) (dto.SchoolResponse, error
 	return toResponse(sch), nil
 }
 
-func (s *Service) List(ctx context.Context, regionID string, p pagination.Params) ([]dto.SchoolResponse, int64, error) {
+// List forces regionID to the caller's own region for regional_admin,
+// ignoring whatever the request asked for -- a regional_admin browsing
+// another region's school directory shouldn't be possible even though
+// school name/address isn't sensitive PII on its own (see
+// docs/architecture/data-integrity.md). Every other role's requested
+// regionID passes through unchanged (ministry_admin: national scope by
+// design; school_admin/teacher: schools is low-sensitivity directory
+// data, not narrowed further here).
+func (s *Service) List(ctx context.Context, userID, role, regionID string, p pagination.Params) ([]dto.SchoolResponse, int64, error) {
+	if role == "regional_admin" {
+		own, err := s.repo.CallerRegionID(ctx, userID)
+		if err != nil {
+			if errors.Is(err, repository.ErrNotFound) {
+				return nil, 0, apperrors.NotFound("user not found")
+			}
+			return nil, 0, apperrors.Internal(err)
+		}
+		if own == "" {
+			return nil, 0, apperrors.Forbidden("regional admin has no region assigned")
+		}
+		regionID = own
+	}
+
 	schools, total, err := s.repo.List(ctx, regionID, p.Limit, p.Offset())
 	if err != nil {
 		return nil, 0, apperrors.Internal(err)

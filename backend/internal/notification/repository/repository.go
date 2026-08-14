@@ -58,6 +58,9 @@ func (r *Repository) ListForUser(ctx context.Context, userID string, unreadOnly 
 		}
 		items = append(items, n)
 	}
+	if err := rows.Err(); err != nil {
+		return nil, 0, fmt.Errorf("list notifications: %w", err)
+	}
 
 	var total int64
 	if err := r.pool.QueryRow(ctx, countQ, userID).Scan(&total); err != nil {

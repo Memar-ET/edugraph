@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Briefcase, Plus } from 'lucide-react'
+import { Briefcase, Plus, Sparkles } from 'lucide-react'
 import { useState } from 'react'
 import type { FormEvent } from 'react'
 
@@ -16,15 +16,74 @@ import {
   Label,
   Spinner,
   StatusPill,
+  toneForPct,
 } from '@components/ui'
+import { useMyStudentRecord } from '@features/student/useMyStudentRecord'
 import { apiErrorMessage } from '@lib/api/client'
-import { createCareerPath, listCareerPaths } from '@lib/api/endpoints'
+import { createCareerPath, generateCareerMatches, getCareerMatches, listCareerPaths } from '@lib/api/endpoints'
 import { queryKeys } from '@lib/query/keys'
 import { useAuthStore } from '@stores/auth.store'
+
+function MyCareerMatches() {
+  const { record: student } = useMyStudentRecord()
+  const queryClient = useQueryClient()
+
+  const matchesQuery = useQuery({
+    queryKey: queryKeys.careerMatches(student?.id ?? 'unknown'),
+    queryFn: () => getCareerMatches(),
+    enabled: Boolean(student),
+  })
+
+  const generate = useMutation({
+    mutationFn: () => generateCareerMatches(),
+    onSuccess: (matches) => {
+      queryClient.setQueryData(queryKeys.careerMatches(student!.id), matches)
+    },
+  })
+
+  return (
+    <Card>
+      <CardHeader className="flex flex-row items-center justify-between">
+        <CardTitle className="text-base">My career matches</CardTitle>
+        <Button size="sm" onClick={() => generate.mutate()} isLoading={generate.isPending} disabled={!student}>
+          <Sparkles className="h-4 w-4" aria-hidden />
+          {matchesQuery.data && matchesQuery.data.length > 0 ? 'Regenerate' : 'Generate my matches'}
+        </Button>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        {generate.isError && (
+          <Banner tone="error">{apiErrorMessage(generate.error, 'Could not generate career matches.')}</Banner>
+        )}
+        {matchesQuery.isLoading && (
+          <div className="flex items-center gap-2 text-sm text-gray-500">
+            <Spinner /> Loading your matches…
+          </div>
+        )}
+        {matchesQuery.data && matchesQuery.data.length === 0 && (
+          <p className="text-sm text-gray-500">
+            No matches yet — based on your exam scores across subjects, generate matches to see which career paths
+            fit best so far.
+          </p>
+        )}
+        {matchesQuery.data && matchesQuery.data.length > 0 && (
+          <ul className="space-y-2">
+            {matchesQuery.data.map((m) => (
+              <li key={m.career_path_id} className="flex items-center justify-between rounded-md border p-2">
+                <span className="text-sm font-medium">{m.title}</span>
+                <StatusPill tone={toneForPct(m.score * 100)}>{Math.round(m.score * 100)}%</StatusPill>
+              </li>
+            ))}
+          </ul>
+        )}
+      </CardContent>
+    </Card>
+  )
+}
 
 export function CareerPathsPage() {
   const user = useAuthStore((s) => s.user)
   const canCreate = user?.role === 'ministry_admin'
+  const isStudent = user?.role === 'student'
   const queryClient = useQueryClient()
 
   const { data, isLoading, isError, error } = useQuery({
@@ -63,6 +122,7 @@ export function CareerPathsPage() {
     <AppShell title="Career paths" description="Paths matched against a student's subject strengths.">
       <div className="grid gap-6 lg:grid-cols-3">
         <div className="space-y-4 lg:col-span-2">
+          {isStudent && <MyCareerMatches />}
           {isLoading && (
             <div className="flex items-center gap-2 text-sm text-gray-500">
               <Spinner /> Loading career paths…

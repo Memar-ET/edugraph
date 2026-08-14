@@ -34,10 +34,11 @@ func (s *Service) GetMyExamInsight(ctx context.Context, userID, examID uuid.UUID
 	return insight, nil
 }
 
-// ListExamInsights backs the teacher-facing insight list for one exam --
-// same role-gating-only convention as ListQuestionsForGrading (router
-// RequireRole, no per-teacher-school ownership check).
-func (s *Service) ListExamInsights(ctx context.Context, examID uuid.UUID) ([]dto.ExamInsightListEntry, error) {
+// ListExamInsights backs the teacher-facing insight list for one exam.
+func (s *Service) ListExamInsights(ctx context.Context, userID, examID uuid.UUID) ([]dto.ExamInsightListEntry, error) {
+	if err := s.verifyCallerOwnsExam(ctx, userID, examID); err != nil {
+		return nil, err
+	}
 	insights, err := s.repo.FetchInsightsForExam(ctx, examID)
 	if err != nil {
 		return nil, apperrors.Internal(err)

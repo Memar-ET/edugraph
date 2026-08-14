@@ -40,7 +40,7 @@ func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) Get(w http.ResponseWriter, r *http.Request) {
-	resp, err := h.svc.Get(r.Context(), chi.URLParam(r, "id"))
+	resp, err := h.svc.Get(r.Context(), middleware.UserID(r.Context()), chi.URLParam(r, "id"))
 	if err != nil {
 		middleware.WriteError(w, err)
 		return

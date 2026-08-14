@@ -84,7 +84,10 @@ func (s *Service) UploadExam(
 	}, nil
 }
 
-func (s *Service) GetExam(ctx context.Context, examID uuid.UUID) (*dto.ExamStatus, error) {
+func (s *Service) GetExam(ctx context.Context, userID, examID uuid.UUID) (*dto.ExamStatus, error) {
+	if err := s.verifyCallerOwnsExam(ctx, userID, examID); err != nil {
+		return nil, err
+	}
 	exam, err := s.repo.GetExam(ctx, examID)
 	if errors.Is(err, repository.ErrNotFound) || errors.Is(err, pgx.ErrNoRows) {
 		return nil, apperrors.NotFound("exam not found")
@@ -93,4 +96,40 @@ func (s *Service) GetExam(ctx context.Context, examID uuid.UUID) (*dto.ExamStatu
 		return nil, apperrors.Internal(err)
 	}
 	return exam, nil
+}
+
+// verifyCallerOwnsExam is the teacher/school_admin-side counterpart to
+// verifyStudentAccess (exam_submit.go) -- checklist 11.3. Every exam-
+// management function below used to check role only (middleware.
+// RequireRole(teacher, school_admin)), with no check that the caller's
+// OWN school is the exam's school; any teacher/school_admin nationwide
+// could read, validate, publish, grade, or print any exam by guessing/
+// enumerating its UUID. This was a documented, deliberate convention at
+// the time (see the old comment on ListQuestionsForGrading), not an
+// oversight -- fixed here, applied uniformly rather than function by
+// function, since the gap was identical everywhere.
+//
+// Deliberately checks against repo.ExamSchoolID (a narrow, standalone
+// lookup) rather than each function's own richer exam-fetch query, so
+// this drops in as a single line at the top of each function without
+// changing any of their existing queries/DTOs.
+func (s *Service) verifyCallerOwnsExam(ctx context.Context, userID, examID uuid.UUID) error {
+	examSchoolID, err := s.repo.ExamSchoolID(ctx, examID)
+	if errors.Is(err, repository.ErrNotFound) {
+		return apperrors.NotFound("exam not found")
+	}
+	if err != nil {
+		return apperrors.Internal(err)
+	}
+	callerSchoolID, err := s.repo.TeacherSchoolID(ctx, userID)
+	if errors.Is(err, repository.ErrNotFound) {
+		return apperrors.Forbidden("no school on record for this account")
+	}
+	if err != nil {
+		return apperrors.Internal(err)
+	}
+	if callerSchoolID != examSchoolID {
+		return apperrors.Forbidden("exam belongs to a different school")
+	}
+	return nil
 }

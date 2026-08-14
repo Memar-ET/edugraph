@@ -46,6 +46,8 @@ import type {
   TopicListItem,
   TutorAskRequest,
   TutorAskResponse,
+  UpdateExamScopeRequest,
+  UpdateExamScopeResponse,
   UploadAnswerKeyResponse,
   UploadExamResponse,
   UploadResponse,
@@ -62,6 +64,22 @@ function unwrap<T>(envelope: Envelope<T>): T {
 export async function login(payload: LoginRequest): Promise<AuthResponse> {
   const res = await apiClient.post<Envelope<AuthResponse>>('/auth/login', payload)
   return unwrap(res.data)
+}
+
+// Revokes the refresh token server-side and clears both auth cookies
+// (see backend/internal/auth/handler/handler.go's Logout) -- calling
+// authStore.clearAuth() alone (checklist 11.1) only wipes this client's
+// local state, it can't touch an HttpOnly cookie at all, so without this
+// call the session cookie would stay fully valid after a user "logs
+// out." Errors are swallowed deliberately: the caller clears local state
+// and redirects to /login regardless (see AppHeader.tsx/AppShell.tsx),
+// and a network hiccup here shouldn't block that.
+export async function logout(): Promise<void> {
+  try {
+    await apiClient.post('/auth/logout')
+  } catch {
+    // best-effort -- see comment above
+  }
 }
 
 export interface UploadCurriculumPayload {
@@ -126,6 +144,22 @@ export async function fetchCurriculumFileBlobUrl(jobId: string): Promise<string>
   return URL.createObjectURL(res.data as Blob)
 }
 
+// Capability 2.2: print-ready exam sheet / answer key. Same blob-url
+// pattern as fetchCurriculumFileBlobUrl -- a plain <a href> can't attach
+// the Bearer token these endpoints require, so we fetch as a blob (the
+// apiClient auth interceptor handles that) and open the resulting object
+// URL in a new tab, where the page's own "Print / Save as PDF" button
+// (baked into the returned HTML) takes over.
+export async function fetchExamPrintBlobUrl(examId: string): Promise<string> {
+  const res = await apiClient.get(`/exams/${examId}/print`, { responseType: 'blob' })
+  return URL.createObjectURL(res.data as Blob)
+}
+
+export async function fetchAnswerKeyPrintBlobUrl(examId: string): Promise<string> {
+  const res = await apiClient.get(`/exams/${examId}/print/answer-key`, { responseType: 'blob' })
+  return URL.createObjectURL(res.data as Blob)
+}
+
 // ── Assessment (Capabilities 2A/2B/2C) ──────────────────────────
 
 export interface UploadExamPayload {
@@ -169,6 +203,17 @@ export async function getExam(examId: string): Promise<ExamStatus> {
 
 export async function validateExam(examId: string): Promise<ValidationReport> {
   const res = await apiClient.post<Envelope<ValidationReport>>(`/exams/${examId}/validate`)
+  return unwrap(res.data)
+}
+
+// Capability 2D: fix a wrong subject/grade/exam-type/unit-range without
+// re-uploading the exam file -- call validateExam() again afterwards to
+// refresh the compliance report against the corrected scope.
+export async function updateExamScope(
+  examId: string,
+  payload: UpdateExamScopeRequest,
+): Promise<UpdateExamScopeResponse> {
+  const res = await apiClient.patch<Envelope<UpdateExamScopeResponse>>(`/exams/${examId}/scope`, payload)
   return unwrap(res.data)
 }
 
@@ -227,16 +272,17 @@ export async function listMyStudyPlans(): Promise<StudyPlan[]> {
 
 // ── Career (Capability: career matching) ──────────────────────────
 
-export async function getCareerMatches(studentId: string): Promise<CareerMatchResponse[]> {
-  const res = await apiClient.get<Envelope<CareerMatchResponse[]>>(
-    `/students/${studentId}/career/matches`,
-  )
+// Always the caller's own matches -- the backend resolves the student
+// from the JWT, not a path param (see backend/internal/career/handler
+// /handler.go), so these no longer take a studentId at all.
+export async function getCareerMatches(): Promise<CareerMatchResponse[]> {
+  const res = await apiClient.get<Envelope<CareerMatchResponse[]>>('/students/me/career/matches')
   return unwrap(res.data)
 }
 
-export async function generateCareerMatches(studentId: string): Promise<CareerMatchResponse[]> {
+export async function generateCareerMatches(): Promise<CareerMatchResponse[]> {
   const res = await apiClient.post<Envelope<CareerMatchResponse[]>>(
-    `/students/${studentId}/career/generate`,
+    '/students/me/career/generate',
   )
   return unwrap(res.data)
 }

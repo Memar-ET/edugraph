@@ -33,6 +33,7 @@ type ExamStatus struct {
 	SubjectCode   string    `json:"subjectCode"`
 	GradeLevel    int       `json:"gradeLevel"`
 	ExamScope     string    `json:"examScope"`
+	UnitNumbers   []int     `json:"unitNumbers"`
 	AcademicYear  string    `json:"academicYear"`
 	TotalMarks    int       `json:"totalMarks"`
 	QuestionCount int       `json:"questionCount"`

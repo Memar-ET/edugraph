@@ -229,14 +229,19 @@ func (r *Repository) ApproveAndPromote(
 
 	// 1. Subject (upsert -- name_en has no better source yet than the code
 	// itself; officers can rename it later via a subjects endpoint).
+	// updated_by/updated_at (V031, checklist 10.3): re-approving the same
+	// code is a real edit (ON CONFLICT DO UPDATE), so it needs the same
+	// attribution as topics/clos below, not just created_at.
 	_, err = tx.Exec(ctx, `
-		INSERT INTO curriculum.subjects (code, name_en, grade_level, academic_year, upload_job_id)
-		VALUES ($1, $1, $2, $3, $4)
+		INSERT INTO curriculum.subjects (code, name_en, grade_level, academic_year, upload_job_id, updated_by)
+		VALUES ($1, $1, $2, $3, $4, $5)
 		ON CONFLICT (code) DO UPDATE SET
 			grade_level   = EXCLUDED.grade_level,
 			academic_year = EXCLUDED.academic_year,
-			upload_job_id = EXCLUDED.upload_job_id
-	`, subjectCode, gradeLevel, academicYear, jobID)
+			upload_job_id = EXCLUDED.upload_job_id,
+			updated_by    = EXCLUDED.updated_by,
+			updated_at    = now()
+	`, subjectCode, gradeLevel, academicYear, jobID, userID)
 	if err != nil {
 		return nil, nil, fmt.Errorf("upsert subject %q: %w", subjectCode, err)
 	}

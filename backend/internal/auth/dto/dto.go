@@ -17,10 +17,6 @@ type LoginRequest struct {
 	Password string `json:"password" validate:"required"`
 }
 
-type RefreshRequest struct {
-	RefreshToken string `json:"refresh_token" validate:"required"`
-}
-
 type UserResponse struct {
 	ID        string    `json:"id"`
 	Email     string    `json:"email"`
@@ -32,9 +28,17 @@ type UserResponse struct {
 	CreatedAt time.Time `json:"created_at"`
 }
 
+// AuthResponse is the service layer's return type -- AccessToken/
+// RefreshToken are `json:"-"` deliberately (checklist 11.1): they're
+// consumed by the handler to set HttpOnly cookies (see
+// middleware.SetAuthCookies) and must never reach the JSON response
+// body, or a client-side script could read them there even though it
+// can't read the cookie itself. This is a defense-in-depth default, not
+// just handler discipline -- even a future bug that passes this struct
+// straight to middleware.WriteJSON can't leak the tokens.
 type AuthResponse struct {
-	AccessToken  string       `json:"access_token"`
-	RefreshToken string       `json:"refresh_token"`
+	AccessToken  string       `json:"-"`
+	RefreshToken string       `json:"-"`
 	ExpiresIn    int          `json:"expires_in"`
 	User         UserResponse `json:"user"`
 }

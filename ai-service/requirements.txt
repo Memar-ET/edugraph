@@ -10,6 +10,10 @@ llama-index==0.10.50
 
 huggingface-hub==0.23.4
 
+# Local (offline-capable) embedding model runner -- ONNX + onnxruntime under
+# the hood, CPU-only, no torch/GPU dependency. See app/utils/embeddings.py.
+fastembed==0.8.0
+
 # Database clients
 asyncpg==0.29.0
 neo4j==5.20.0

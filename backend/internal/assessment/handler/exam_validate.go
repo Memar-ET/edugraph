@@ -19,8 +19,13 @@ func (h *Handler) ValidateExam(w http.ResponseWriter, r *http.Request) {
 		middleware.WriteError(w, apperrors.BadRequest("invalid exam id"))
 		return
 	}
+	userID, err := callerID(r)
+	if err != nil {
+		middleware.WriteError(w, apperrors.Internal(err))
+		return
+	}
 
-	report, err := h.svc.ValidateExam(r.Context(), examID)
+	report, err := h.svc.ValidateExam(r.Context(), userID, examID)
 	if err != nil {
 		middleware.WriteError(w, err)
 		return
@@ -37,8 +42,13 @@ func (h *Handler) PublishExam(w http.ResponseWriter, r *http.Request) {
 		middleware.WriteError(w, apperrors.BadRequest("invalid exam id"))
 		return
 	}
+	userID, err := callerID(r)
+	if err != nil {
+		middleware.WriteError(w, apperrors.Internal(err))
+		return
+	}
 
-	resp, err := h.svc.PublishExam(r.Context(), examID)
+	resp, err := h.svc.PublishExam(r.Context(), userID, examID)
 	if err != nil {
 		middleware.WriteError(w, err)
 		return

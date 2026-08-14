@@ -14,6 +14,24 @@ import (
 
 var ErrNotFound = errors.New("not found")
 
+// This repository targets career_paths_v010/career_matches_v010, not the
+// bare career_paths/career_matches names visible elsewhere in this file's
+// SQL history -- V011__updated_curriculum.sql renamed (archived, not
+// dropped) the originals to make room for a newer careers.careers/
+// careers.career_topic_requirements/careers.career_matches schema
+// (topic-level requirements + importance weighting, closer to the PRD's
+// Neo4j-native design). That newer schema is completely unused anywhere
+// in the codebase today -- confirmed by grep, not assumed -- so this
+// repository was left pointed at a table name (career_paths) that V011
+// had already renamed out from under it, which is the deeper reason
+// "Generate Career Matches" was broken: every query here failed outright
+// with "relation does not exist", not just a downstream 502. Migrating
+// to the newer topic-level schema (which has no create/curation UI for
+// career_topic_requirements yet either) is real, larger future work --
+// out of scope for fixing the actually-broken feature; see the
+// career_matcher/service.py docstring on the ai-service side for the
+// same call.
+
 type CareerPath struct {
 	ID               string
 	Title            string
@@ -43,7 +61,7 @@ func (r *Repository) Create(ctx context.Context, title string, description *stri
 		return CareerPath{}, fmt.Errorf("marshal required subjects: %w", err)
 	}
 
-	const q = `INSERT INTO career_paths (title, description, required_subjects) VALUES ($1, $2, $3)
+	const q = `INSERT INTO career_paths_v010 (title, description, required_subjects) VALUES ($1, $2, $3)
 		RETURNING id, title, description, required_subjects, created_at`
 	cp, err := scanCareerPath(r.pool.QueryRow(ctx, q, title, description, subjectsJSON))
 	if err != nil {
@@ -61,7 +79,7 @@ func (r *Repository) Create(ctx context.Context, title string, description *stri
 }
 
 func (r *Repository) List(ctx context.Context) ([]CareerPath, error) {
-	const q = `SELECT id, title, description, required_subjects, created_at FROM career_paths ORDER BY title`
+	const q = `SELECT id, title, description, required_subjects, created_at FROM career_paths_v010 ORDER BY title`
 	rows, err := r.pool.Query(ctx, q)
 	if err != nil {
 		return nil, fmt.Errorf("list career paths: %w", err)
@@ -76,11 +94,14 @@ func (r *Repository) List(ctx context.Context) ([]CareerPath, error) {
 		}
 		paths = append(paths, cp)
 	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("list career paths: %w", err)
+	}
 	return paths, nil
 }
 
 func (r *Repository) GetByID(ctx context.Context, id string) (CareerPath, error) {
-	const q = `SELECT id, title, description, required_subjects, created_at FROM career_paths WHERE id = $1`
+	const q = `SELECT id, title, description, required_subjects, created_at FROM career_paths_v010 WHERE id = $1`
 	cp, err := scanCareerPath(r.pool.QueryRow(ctx, q, id))
 	if errors.Is(err, pgx.ErrNoRows) {
 		return CareerPath{}, ErrNotFound
@@ -88,16 +109,49 @@ func (r *Repository) GetByID(ctx context.Context, id string) (CareerPath, error)
 	return cp, err
 }
 
-// StudentSubjectAverages returns the student's average assessment score per
-// subject, used as the input signal for career matching.
+// StudentIDByUserID resolves the caller's own students.id from their
+// users.id (JWT subject) -- see service.GenerateMatches/Matches, which
+// use this instead of trusting a client-supplied studentID, closing the
+// IDOR where any authenticated account could read or trigger generation
+// for another student's career matches by passing their id in the URL.
+func (r *Repository) StudentIDByUserID(ctx context.Context, userID string) (string, error) {
+	var studentID string
+	err := r.pool.QueryRow(ctx, `SELECT id FROM students WHERE user_id = $1`, userID).Scan(&studentID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return "", ErrNotFound
+	}
+	if err != nil {
+		return "", fmt.Errorf("lookup student by user id: %w", err)
+	}
+	return studentID, nil
+}
+
+// StudentSubjectAverages returns the student's average exam percentage per
+// subject family, used as the input signal for career matching.
+//
+// This used to query assessment_results/assessments/subjects -- the
+// legacy public-schema tables from before the exam pipeline moved to
+// assessment.exam_attempts/assessment.exams. Nothing writes to those
+// legacy tables anymore (confirmed by grep, not assumed), so this always
+// returned an empty map for every real student, making career matching
+// fail with "no graded assessments" before it ever reached the (also
+// broken) ai-service call. Fixed to read the tables the exam-taking flow
+// actually writes to.
+//
+// curriculum.subjects.code is grade-coupled (e.g. "BIO7", "MATH9"), but
+// a career's required_subjects is a grade-independent family (a career
+// path applies across grades, and CareerPathsPage's own placeholder --
+// "PHY, MATH" -- confirms the short, grade-stripped convention), so the
+// trailing digits are stripped here to group grades of the same subject
+// together.
 func (r *Repository) StudentSubjectAverages(ctx context.Context, studentID string) (map[string]float64, error) {
 	const q = `
-		SELECT sub.name, avg(ar.score)
-		FROM assessment_results ar
-		JOIN assessments a ON a.id = ar.assessment_id
-		JOIN subjects sub ON sub.id = a.subject_id
-		WHERE ar.student_id = $1
-		GROUP BY sub.name`
+		SELECT TRIM(TRAILING '0123456789' FROM e.subject_code) AS subject_family,
+		       avg(a.percentage)::float8
+		FROM assessment.exam_attempts a
+		JOIN assessment.exams e ON e.id = a.exam_id
+		WHERE a.student_id = $1 AND a.percentage IS NOT NULL
+		GROUP BY subject_family`
 
 	rows, err := r.pool.Query(ctx, q, studentID)
 	if err != nil {
@@ -114,6 +168,9 @@ func (r *Repository) StudentSubjectAverages(ctx context.Context, studentID strin
 		}
 		averages[subject] = avg
 	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("query subject averages: %w", err)
+	}
 	return averages, nil
 }
 
@@ -121,7 +178,7 @@ func (r *Repository) StudentSubjectAverages(ctx context.Context, studentID strin
 // the graph can be traversed for subject -> career recommendations.
 func (r *Repository) SaveMatches(ctx context.Context, studentID string, matches []Match) error {
 	for _, m := range matches {
-		const q = `INSERT INTO career_matches (student_id, career_path_id, match_score)
+		const q = `INSERT INTO career_matches_v010 (student_id, career_path_id, match_score)
 			VALUES ($1, $2, $3)
 			ON CONFLICT (student_id, career_path_id)
 			DO UPDATE SET match_score = $3, generated_at = now()`
@@ -149,8 +206,8 @@ func (r *Repository) SaveMatches(ctx context.Context, studentID string, matches 
 func (r *Repository) ListMatches(ctx context.Context, studentID string) ([]Match, error) {
 	const q = `
 		SELECT cm.career_path_id, cp.title, cm.match_score
-		FROM career_matches cm
-		JOIN career_paths cp ON cp.id = cm.career_path_id
+		FROM career_matches_v010 cm
+		JOIN career_paths_v010 cp ON cp.id = cm.career_path_id
 		WHERE cm.student_id = $1
 		ORDER BY cm.match_score DESC`
 
@@ -167,6 +224,9 @@ func (r *Repository) ListMatches(ctx context.Context, studentID string) ([]Match
 			return nil, fmt.Errorf("scan match: %w", err)
 		}
 		matches = append(matches, m)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("list matches: %w", err)
 	}
 	return matches, nil
 }

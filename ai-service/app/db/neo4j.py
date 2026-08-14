@@ -4,12 +4,22 @@ Neo4j access for the AI service (Capability 3A: root-cause traversal).
 The Go side mirrors the curriculum as (:Subject)-[:HAS_UNIT]->(:Unit)
 -[:HAS_TOPIC]->(:Topic) where Topic.id is the Postgres curriculum.topics
 UUID (see backend/internal/curriculum/repository syncCurriculumGraph).
-Prerequisite edges are expected as (:Topic)-[:HAS_PREREQUISITE]->(:Topic)
--- they don't exist in the graph yet (curriculum.topic_prerequisites is
-empty and unmirrored today), so callers MUST treat an empty result as
-normal and fall back to the Postgres recursive walk in postgres_gap.py.
-Neo4j being down entirely is likewise non-fatal here: this service's
-system of record is Postgres, the graph is a best-effort accelerator.
+Prerequisite edges are (:Topic)-[:HAS_PREREQUISITE]->(:Topic), written by
+POST /curriculum/topics/:id/prerequisites (curriculum/service/
+prerequisites.go's AddTopicPrerequisite -> SyncPrerequisiteToNeo4j) any
+time a curriculum officer links a topic to its prerequisite -- the Postgres
+row and the graph edge are written together, best-effort on the graph side.
+As of this writing nobody has actually used that endpoint yet (no seed
+data, no frontend curation page), so in practice the graph is still empty
+today -- but that's a data-population gap, not a missing mechanism.
+Callers MUST still treat an empty result as normal (an unpopulated or
+partially-populated graph is an expected, ongoing state, not an error) and
+fall back to the Postgres recursive walk in postgres_gap.py. Neo4j being
+down entirely is likewise non-fatal here: this service's system of record
+is Postgres, the graph is a best-effort accelerator. Verified directly
+(seeded a real multi-hop chain into both stores and exercised every
+combination -- see the checklist 3.1 writeup) that fetch_prerequisite_chain
+is genuinely hit and returns real hops when the graph has data.
 """
 
 from __future__ import annotations

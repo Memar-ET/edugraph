@@ -12,7 +12,9 @@ Orchestrates one exam-parsing job end to end (Capability 2A):
      guess for the NOT NULL columns; the document itself is authoritative).
   5. Run the matching question extractor.
   6. For each question without an explicit [CLO: ...] annotation, match it
-     to a curriculum CLO -- the Gemini-backed matcher (clo_matcher_llm.py)
+     to a curriculum CLO -- the local vector-embedding matcher
+     (vector_matcher.py, Capability 2.1) first when the target subject has
+     embedded CLOs, then the Gemini-backed matcher (clo_matcher_llm.py)
      when GEMINI_API_KEY is configured, else the plain keyword-overlap
      matcher (clo_matcher.py).
   7. Save the resulting question rows to assessment.questions and flip
@@ -24,7 +26,7 @@ from __future__ import annotations
 import structlog
 
 from app.db import postgres, postgres_assessment
-from app.services.exam_parser import answer_key, clo_matcher, clo_matcher_llm, docx_extractor, extractor, metadata
+from app.services.exam_parser import answer_key, clo_matcher, clo_matcher_llm, docx_extractor, extractor, metadata, vector_matcher
 
 logger = structlog.get_logger()
 
@@ -105,6 +107,17 @@ async def process_exam_job(exam_id: str) -> None:
                     q["cloCode"] = None
                 continue
 
+            # Capability 2.1: real semantic (vector embedding) matching
+            # first -- runs locally/offline, no per-question cloud call.
+            # Falls through silently (see vector_matcher.match_clo_vector's
+            # docstring) to the Gemini matcher, then the keyword matcher,
+            # exactly preserving the two matchers' prior behavior for
+            # subjects that don't have CLO embeddings yet.
+            code, score, _classification = await vector_matcher.match_clo_vector(q["questionText"], subject_code)
+            if code:
+                q["cloCode"], q["cloAlignScore"], q["cloAlignMethod"] = code, score, "embedding_auto"
+                continue
+
             code, score = await clo_matcher_llm.match_clo_llm(q["questionText"], clo_pairs)
             if code:
                 q["cloCode"], q["cloAlignScore"], q["cloAlignMethod"] = code, score, "llm_verified"
@@ -116,12 +129,14 @@ async def process_exam_job(exam_id: str) -> None:
 
         await postgres_assessment.save_exam_questions(exam_id, exam["school_id"], questions)
         matched_count = sum(1 for q in questions if q.get("cloCode"))
+        vector_matched_count = sum(1 for q in questions if q.get("cloAlignMethod") == "embedding_auto")
         llm_matched_count = sum(1 for q in questions if q.get("cloAlignMethod") == "llm_verified")
         answer_key_count = sum(1 for q in questions if q.get("answerKey"))
         log.info(
             "exam_parse.parsed",
             question_count=len(questions),
             clo_matched=matched_count,
+            vector_matched=vector_matched_count,
             llm_matched=llm_matched_count,
             answer_key_matched=answer_key_count,
         )

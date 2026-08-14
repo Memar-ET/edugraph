@@ -50,7 +50,7 @@ func (h *Handler) Get(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
 	p := pagination.FromRequest(r)
-	items, total, err := h.svc.List(r.Context(), r.URL.Query().Get("region_id"), p)
+	items, total, err := h.svc.List(r.Context(), middleware.UserID(r.Context()), middleware.Role(r.Context()), r.URL.Query().Get("region_id"), p)
 	if err != nil {
 		middleware.WriteError(w, err)
 		return

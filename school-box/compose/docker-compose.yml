@@ -1,4 +1,3 @@
-version: '3.9'
 # School Box — runs entirely offline on local school network
 # No internet required after initial setup
 
@@ -15,7 +14,7 @@ services:
       - AI_SERVICE_URL=http://ai-service:8000
       - SCHOOL_BOX_ID=${SCHOOL_BOX_ID}
       - SCHOOL_ID=${SCHOOL_ID}
-    env_file: ../.env.school-box
+    env_file: ../../.env.school-box
     depends_on:
       postgres: { condition: service_healthy }
       neo4j:    { condition: service_healthy }
@@ -31,6 +30,19 @@ services:
       - OFFLINE_MODE=true
     depends_on: [ollama]
 
+  # Capability 2.3: the SPA itself. Deliberately no VITE_API_URL build arg
+  # baked into this image (see frontend/Dockerfile / frontend/lib/api/
+  # client.ts's default) -- it calls relative /api/v1/... paths, which
+  # Caddy (below) proxies back to `api` on this same box. That's what
+  # makes one shared image work unmodified at any school's LAN IP with no
+  # per-school rebuild, and what makes exam delivery here not depend on
+  # reaching anything outside this docker-compose network.
+  frontend:
+    image: ${ECR_REGISTRY}/edugraph-frontend:${IMAGE_TAG}
+    restart: unless-stopped
+    # Not published to the host -- only Caddy talks to this, on the
+    # compose network, at frontend:80.
+
   postgres:
     image: pgvector/pgvector:pg16
     restart: unless-stopped
@@ -40,49 +52,99 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
     volumes:
       - postgres_data:/var/lib/postgresql/data
+      - ../config/postgres.conf:/etc/postgresql/postgresql.conf:ro
+    command: postgres -c config_file=/etc/postgresql/postgresql.conf
     healthcheck:
       test: ['CMD-SHELL', 'pg_isready -U edugraph']
-      interval: 10s; timeout: 5s; retries: 5
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
   neo4j:
     image: neo4j:5.18-community
     restart: unless-stopped
     environment:
       NEO4J_AUTH: neo4j/${NEO4J_PASSWORD}
-      NEO4J_dbms_memory_heap_max__size: 1g
-      NEO4J_dbms_memory_pagecache_size: 512m
+      # server.memory.* (not the deprecated dbms.memory.* names) -- Neo4j
+      # 5.18 logs a deprecation warning on every start otherwise.
+      NEO4J_server_memory_heap_max__size: 1g
+      NEO4J_server_memory_pagecache_size: 512m
     volumes:
       - neo4j_data:/data
+    # Without this, `api`'s `depends_on: neo4j: condition: service_healthy`
+    # below has nothing to wait on -- Compose rejects that as invalid at
+    # `up` time (a service_healthy dependency needs the target to define
+    # a healthcheck), so `api` could never start. cypher-shell is the
+    # same probe scripts/health-check.sh uses.
+    #
+    # Reads the password out of NEO4J_AUTH ("neo4j/<password>") inside
+    # the container rather than adding a separate NEO4J_PASSWORD env var
+    # -- tried that first, and it broke the container outright: the
+    # official neo4j image's entrypoint auto-converts every NEO4J_*
+    # env var into a neo4j.conf setting (that's how the memory-tuning
+    # vars above work, via NEO4J_dbms_memory_heap_max__size), so a bare
+    # NEO4J_PASSWORD got misread as an invalid config key named
+    # "password" and crash-looped Neo4j under strict_validation. `$$`
+    # escapes past Compose's own variable interpolation so the
+    # container's shell does the `cut` at healthcheck-run time.
+    healthcheck:
+      test: ['CMD-SHELL', 'cypher-shell -u neo4j -p "$$(echo $$NEO4J_AUTH | cut -d/ -f2)" "RETURN 1" || exit 1']
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
 
   redis:
     image: redis:7-alpine
     restart: unless-stopped
-    volumes: [redis_data:/data]
-    command: redis-server --maxmemory 256mb --maxmemory-policy allkeys-lru
+    volumes:
+      - redis_data:/data
+      - ../config/redis.conf:/usr/local/etc/redis/redis.conf:ro
+    command: redis-server /usr/local/etc/redis/redis.conf
 
   ollama:
     image: ollama/ollama:latest
     restart: unless-stopped
     volumes:
       - ollama_models:/root/.ollama
+    env_file: ../config/ollama.conf
     # Pre-pull models on first start: ollama pull qwen2.5:7b-instruct-q4_K_M
 
+  # Drains sync.outbox (backend/db/migrations/V029__sync_outbox.sql) to the
+  # cloud and applies pulled changes back, on SYNC_INTERVAL_MINUTES. Needs
+  # its own POSTGRES_* vars (not just `depends_on: postgres`) since it talks
+  # to the local database directly, same as `api` does.
   sync-agent:
     image: ${ECR_REGISTRY}/edugraph-sync-agent:${IMAGE_TAG}
     restart: unless-stopped
+    # Loopback-only: scripts/health-check.sh (running on the box itself)
+    # is the only intended caller of /health and /health/sync -- nothing
+    # else on the LAN needs this, so it isn't published any wider than
+    # postgres/redis/neo4j are.
+    ports: ['127.0.0.1:9090:9090']
     environment:
       - CLOUD_SYNC_ENDPOINT=${CLOUD_SYNC_URL}
       - SCHOOL_BOX_ID=${SCHOOL_BOX_ID}
+      - SCHOOL_ID=${SCHOOL_ID}
       - SYNC_INTERVAL_MINUTES=360
-    depends_on: [postgres]
+      - POSTGRES_HOST=postgres
+      - POSTGRES_DB=edugraph
+      - POSTGRES_USER=edugraph
+    env_file: ../../.env.school-box
+    depends_on:
+      postgres: { condition: service_healthy }
 
+  # Capability 2.3: single LAN-facing entry point -- see
+  # ../config/Caddyfile for the actual routing (api vs frontend) and why
+  # auto_https is off for a LAN-only, no-public-domain deployment.
   caddy:
     image: caddy:alpine
     restart: unless-stopped
-    ports: ['443:443', '80:80']
+    ports: ['80:80']
     volumes:
-      - ../config/caddy.json:/etc/caddy/Caddyfile
+      - ../config/Caddyfile:/etc/caddy/Caddyfile
       - caddy_data:/data
+    depends_on: [api, frontend]
 
   watchtower:
     image: containrrr/watchtower
