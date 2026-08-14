@@ -11,7 +11,6 @@ import {
 import { useState } from 'react'
 import type { ReactNode } from 'react'
 
-import { logout } from '@lib/api/endpoints'
 import { cn } from '@lib/utils/cn'
 import { useAuthStore } from '@stores/auth.store'
 
