@@ -174,6 +174,10 @@ func newRouter(cfg config.Config, log *zap.Logger, verifier middleware.TokenVeri
 				r.Use(middleware.RequireRole(roleMinistryAdmin, roleRegionalAdmin))
 				r.Get("/overview", h.ministry.Overview)
 				r.Get("/regions/{regionID}/stats", h.ministry.RegionStats)
+				// 6.1: ranked underperforming schools with weak-topic breakdown
+				r.Get("/regions/{regionID}/underperforming", h.ministry.UnderperformingSchools)
+				// 6.2: AI-generated national curriculum insights (degrades gracefully)
+				r.With(middleware.RequireRole(roleMinistryAdmin)).Post("/curriculum-insights", h.ministry.CurriculumInsights)
 			})
 
 			// ── Curriculum ──────────────────────────────────────

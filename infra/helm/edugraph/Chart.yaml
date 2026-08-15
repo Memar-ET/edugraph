@@ -1,0 +1,6 @@
+apiVersion: v2
+name: edugraph
+description: EduGraph AI — curriculum-intelligence platform for Ethiopian K-12 education
+type: application
+version: 0.1.0
+appVersion: "1.0.0"

@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: edugraph-config
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "edugraph.labels" . | nindent 4 }}
+data:
+  APP_ENV: {{ .Values.appEnv | default "production" | quote }}
+  LOG_LEVEL: {{ .Values.logLevel | default "info" | quote }}
+  # Secrets are injected via Kubernetes ExternalSecret / CSI driver from AWS Secrets Manager.
+  # Only non-sensitive config lives here.
+  POSTGRES_MAX_CONNS: {{ .Values.postgres.maxConns | default "15" | quote }}
+  POSTGRES_SSLMODE: {{ .Values.postgres.sslMode | default "require" | quote }}
+  REDIS_POOL_SIZE: {{ .Values.redis.poolSize | default "10" | quote }}

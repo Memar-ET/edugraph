@@ -10,6 +10,47 @@ export interface Envelope<T> {
   meta?: unknown
 }
 
+// ── Ministry analytics (backend/internal/ministry/dto) ──────────
+
+export interface WeakTopic {
+  topic_id: string
+  topic_title: string
+  avg_mastery: number
+  affected_students: number
+}
+
+export interface UnderperformingSchool {
+  school_id: string
+  school_name: string
+  school_code: string
+  quality_score: number
+  mastery_rate: number
+  flagged_topics_count: number
+  top_weak_topics: WeakTopic[]
+}
+
+export interface UnderperformingResponse {
+  schools: UnderperformingSchool[]
+}
+
+export interface InsightAlert {
+  severity: 'critical' | 'warning' | 'info'
+  message: string
+}
+
+export interface InsightRecommendation {
+  priority: 'high' | 'medium' | 'low'
+  text: string
+}
+
+export interface NationalInsightsResponse {
+  headline: string
+  alerts: InsightAlert[]
+  recommendations: InsightRecommendation[]
+  trend_summary: string
+  ai_configured: boolean
+}
+
 /** Pagination metadata attached by middleware.WriteJSONMeta (pkg/pagination.Meta). */
 export interface PaginationMeta {
   page: number

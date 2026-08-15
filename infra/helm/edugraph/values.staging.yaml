@@ -1,0 +1,51 @@
+# Staging overrides — values not listed here come from values.yaml defaults
+
+appEnv: staging
+logLevel: debug
+
+replicaCount:
+  api: 1
+  ai: 1
+  frontend: 1
+
+image:
+  registry: "123456789012.dkr.ecr.af-south-1.amazonaws.com"
+  api:
+    tag: "staging-latest"
+  ai:
+    tag: "staging-latest"
+  frontend:
+    tag: "staging-latest"
+
+autoscaling:
+  api:
+    enabled: false   # Fixed replica count in staging keeps costs down
+  ai:
+    enabled: false
+
+resources:
+  api:
+    requests: { cpu: "50m", memory: "64Mi" }
+    limits:   { cpu: "200m", memory: "256Mi" }
+  ai:
+    requests: { cpu: "200m", memory: "512Mi" }
+    limits:   { cpu: "1000m", memory: "2Gi" }
+
+ingress:
+  host: "staging.edugraph.et"
+  tls:
+    - hosts: ["staging.edugraph.et"]
+      secretName: edugraph-staging-tls
+
+postgres:
+  maxConns: "5"
+
+serviceAccount:
+  api:
+    annotations:
+      eks.amazonaws.com/role-arn: "arn:aws:iam::123456789012:role/edugraph-staging-api"
+  ai:
+    annotations:
+      eks.amazonaws.com/role-arn: "arn:aws:iam::123456789012:role/edugraph-staging-ai"
+  frontend:
+    annotations: {}

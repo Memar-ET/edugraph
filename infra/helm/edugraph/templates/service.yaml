@@ -1,0 +1,19 @@
+{{- range $component, $cfg := dict "api" $.Values.service.api "ai" $.Values.service.ai "frontend" $.Values.service.frontend }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: edugraph-{{ $component }}
+  namespace: {{ $.Release.Namespace }}
+  labels:
+    {{- include "edugraph.labels" $ | nindent 4 }}
+spec:
+  type: {{ $.Values.service.type }}
+  selector:
+    {{- include "edugraph.selectorLabels" (dict "component" $component "Release" $.Release) | nindent 4 }}
+  ports:
+    - name: http
+      port: {{ $cfg.port }}
+      targetPort: {{ $cfg.port }}
+      protocol: TCP
+{{- end }}

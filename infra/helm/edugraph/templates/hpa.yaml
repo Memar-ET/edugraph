@@ -1,0 +1,48 @@
+{{- if .Values.autoscaling.api.enabled }}
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: edugraph-api
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "edugraph.labels" . | nindent 4 }}
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: edugraph-api
+  minReplicas: {{ .Values.autoscaling.api.minReplicas }}
+  maxReplicas: {{ .Values.autoscaling.api.maxReplicas }}
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: {{ .Values.autoscaling.api.targetCPUUtilizationPercentage }}
+{{- end }}
+{{- if .Values.autoscaling.ai.enabled }}
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: edugraph-ai
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "edugraph.labels" . | nindent 4 }}
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: edugraph-ai
+  minReplicas: {{ .Values.autoscaling.ai.minReplicas }}
+  maxReplicas: {{ .Values.autoscaling.ai.maxReplicas }}
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70
+{{- end }}

@@ -1,5 +1,7 @@
 import { apiClient } from './client'
 import type {
+  NationalInsightsResponse,
+  UnderperformingResponse,
   AddPrerequisiteRequest,
   AddPrerequisiteResponse,
   ApproveRequest,
@@ -355,6 +357,18 @@ export async function getMinistryOverview(): Promise<MinistryOverviewResponse> {
 
 export async function getRegionStats(regionId: string): Promise<RegionStatsResponse> {
   const res = await apiClient.get<Envelope<RegionStatsResponse>>(`/ministry/regions/${regionId}/stats`)
+  return unwrap(res.data)
+}
+
+export async function getUnderperformingSchools(regionId: string, limit = 10): Promise<UnderperformingResponse> {
+  const res = await apiClient.get<Envelope<UnderperformingResponse>>(
+    `/ministry/regions/${regionId}/underperforming?limit=${limit}`,
+  )
+  return unwrap(res.data)
+}
+
+export async function getNationalInsights(): Promise<NationalInsightsResponse> {
+  const res = await apiClient.post<Envelope<NationalInsightsResponse>>('/ministry/curriculum-insights', {})
   return unwrap(res.data)
 }
 

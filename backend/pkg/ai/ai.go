@@ -63,6 +63,17 @@ func (c *Client) TutorAsk(ctx context.Context, req TutorAskRequest) (*TutorAskRe
 	return &out, nil
 }
 
+// NationalInsights calls POST /api/v1/insights/national on the ai-service
+// and returns the structured JSON response as a generic map. The caller
+// (ministry/service/insights.go) is responsible for mapping the map into DTOs.
+func (c *Client) NationalInsights(ctx context.Context, payload map[string]any) (map[string]any, error) {
+	var out map[string]any
+	if err := c.post(ctx, "/api/v1/insights/national", payload, &out); err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // MatchCareers calls POST /api/v1/career/match on the ai-service.
 func (c *Client) MatchCareers(ctx context.Context, req CareerMatchRequest) ([]CareerMatchResult, error) {
 	var results []CareerMatchResult

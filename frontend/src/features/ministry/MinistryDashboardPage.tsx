@@ -1,5 +1,5 @@
 import { useQueries, useQuery } from '@tanstack/react-query'
-import { GraduationCap, Landmark, School as SchoolIcon, Users } from 'lucide-react'
+import { AlertTriangle, GraduationCap, Info, Landmark, Lightbulb, School as SchoolIcon, Sparkles, Users } from 'lucide-react'
 
 import { AppShell } from '@components/layout'
 import {
@@ -9,9 +9,11 @@ import {
   ScheduleCalendarWidget,
   StatMetricCard,
 } from '@components/dashboard'
-import { getMinistryOverview, getRegionStats, listRegions } from '@lib/api/endpoints'
+import { Banner, Card, CardContent, CardHeader, CardTitle, Spinner } from '@components/ui'
+import { getNationalInsights, getMinistryOverview, getRegionStats, listRegions } from '@lib/api/endpoints'
 import { queryKeys } from '@lib/query/keys'
 import { formatNumber, formatPercent } from '@lib/utils/format'
+import type { InsightAlert, InsightRecommendation } from '@/types/api'
 
 const MOCK_MINISTRY_PERFORMANCE = [
   { label: 'Jan', value: 72 },
@@ -197,6 +199,9 @@ export function MinistryDashboardPage() {
           </div>
         </div>
 
+        {/* AI-generated national curriculum insights (6.2) */}
+        <NationalInsightsPanel />
+
         {/* Regions Table */}
         <ManagementTableCard
           title="Regional Performance & School Breakdown"
@@ -206,5 +211,107 @@ export function MinistryDashboardPage() {
         />
       </div>
     </AppShell>
+  )
+}
+
+const SEVERITY_STYLES: Record<string, string> = {
+  critical: 'border-red-200 bg-red-50 text-red-800',
+  warning: 'border-amber-200 bg-amber-50 text-amber-800',
+  info: 'border-blue-200 bg-blue-50 text-blue-800',
+}
+
+const PRIORITY_STYLES: Record<string, string> = {
+  high: 'bg-red-100 text-red-700',
+  medium: 'bg-amber-100 text-amber-700',
+  low: 'bg-gray-100 text-gray-600',
+}
+
+function AlertIcon({ severity }: { severity: string }) {
+  if (severity === 'critical') return <AlertTriangle className="h-3.5 w-3.5 shrink-0 mt-0.5" />
+  if (severity === 'warning') return <AlertTriangle className="h-3.5 w-3.5 shrink-0 mt-0.5" />
+  return <Info className="h-3.5 w-3.5 shrink-0 mt-0.5" />
+}
+
+function NationalInsightsPanel() {
+  const { data, isLoading, isError } = useQuery({
+    queryKey: queryKeys.nationalInsights(),
+    queryFn: getNationalInsights,
+    staleTime: 5 * 60 * 1000,
+  })
+
+  return (
+    <Card className="rounded-2xl border-gray-100 shadow-sm">
+      <CardHeader>
+        <div className="flex items-center gap-2">
+          <Sparkles className="h-4 w-4 text-indigo-500" />
+          <CardTitle className="font-display text-base font-bold">National Curriculum Intelligence</CardTitle>
+          {data && !data.ai_configured && (
+            <span className="ml-auto text-xs text-gray-400 italic">AI provider not configured — showing summary</span>
+          )}
+        </div>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        {isLoading && (
+          <div className="flex items-center gap-2 text-xs text-gray-500">
+            <Spinner /> Generating national insights...
+          </div>
+        )}
+        {isError && (
+          <Banner tone="error">Could not load national insights.</Banner>
+        )}
+        {data && (
+          <>
+            {data.headline && (
+              <p className="text-sm font-semibold text-gray-900 leading-snug">{data.headline}</p>
+            )}
+            {data.trend_summary && (
+              <p className="text-xs text-gray-600 leading-relaxed">{data.trend_summary}</p>
+            )}
+
+            {data.alerts.length > 0 && (
+              <div className="space-y-2">
+                <p className="text-xs font-semibold uppercase tracking-wide text-gray-400">Alerts</p>
+                <div className="space-y-1.5">
+                  {data.alerts.map((alert: InsightAlert, i: number) => (
+                    <div
+                      key={i}
+                      className={`flex items-start gap-2 rounded-lg border px-3 py-2 text-xs ${SEVERITY_STYLES[alert.severity] ?? SEVERITY_STYLES.info}`}
+                    >
+                      <AlertIcon severity={alert.severity} />
+                      <span>{alert.message}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {data.recommendations.length > 0 && (
+              <div className="space-y-2">
+                <p className="text-xs font-semibold uppercase tracking-wide text-gray-400">Recommendations</p>
+                <div className="space-y-1.5">
+                  {data.recommendations.map((rec: InsightRecommendation, i: number) => (
+                    <div key={i} className="flex items-start gap-2 rounded-lg bg-gray-50 px-3 py-2 text-xs text-gray-700">
+                      <Lightbulb className="h-3.5 w-3.5 shrink-0 mt-0.5 text-indigo-400" />
+                      <div className="flex-1">
+                        <span>{rec.text}</span>
+                        <span className={`ml-2 inline-flex rounded-full px-1.5 py-0.5 text-[10px] font-bold ${PRIORITY_STYLES[rec.priority] ?? PRIORITY_STYLES.medium}`}>
+                          {rec.priority}
+                        </span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {data.alerts.length === 0 && data.recommendations.length === 0 && !isLoading && (
+              <p className="text-xs text-gray-400 italic">
+                No alerts or recommendations at this time. Configure an LLM provider in the ai-service for AI-generated analysis.
+              </p>
+            )}
+          </>
+        )}
+      </CardContent>
+    </Card>
   )
 }

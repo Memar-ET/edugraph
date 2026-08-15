@@ -158,7 +158,7 @@ func main() {
 	teacherHandler := teacherhandler.New(teacherService)
 
 	ministryRepository := ministryrepo.New(pgPool)
-	ministryService := ministrysvc.New(ministryRepository)
+	ministryService := ministrysvc.New(ministryRepository, aiClient)
 	ministryHandler := ministryhandler.New(ministryService)
 
 	// ... existing code ...

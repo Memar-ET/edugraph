@@ -1,0 +1,57 @@
+{{- $components := dict
+  "api"      (dict "port" .Values.service.api.port      "image" .Values.image.api      "resources" .Values.resources.api      "replicas" .Values.replicaCount.api)
+  "ai"       (dict "port" .Values.service.ai.port       "image" .Values.image.ai       "resources" .Values.resources.ai       "replicas" .Values.replicaCount.ai)
+  "frontend" (dict "port" .Values.service.frontend.port "image" .Values.image.frontend "resources" .Values.resources.frontend "replicas" .Values.replicaCount.frontend)
+-}}
+{{- range $component, $cfg := $components }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: edugraph-{{ $component }}
+  namespace: {{ $.Release.Namespace }}
+  labels:
+    {{- include "edugraph.labels" $ | nindent 4 }}
+spec:
+  replicas: {{ $cfg.replicas }}
+  selector:
+    matchLabels:
+      {{- include "edugraph.selectorLabels" (dict "component" $component "Release" $.Release) | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "edugraph.selectorLabels" (dict "component" $component "Release" $.Release) | nindent 8 }}
+    spec:
+      serviceAccountName: edugraph-{{ $component }}
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        fsGroup: 1000
+      containers:
+        - name: {{ $component }}
+          image: "{{ $.Values.image.registry }}/{{ $cfg.image.repository }}:{{ $cfg.image.tag }}"
+          imagePullPolicy: {{ $cfg.image.pullPolicy | default "IfNotPresent" }}
+          ports:
+            - containerPort: {{ $cfg.port }}
+              protocol: TCP
+          envFrom:
+            - configMapRef:
+                name: edugraph-config
+            - secretRef:
+                name: edugraph-secrets
+          resources:
+            {{- toYaml $cfg.resources | nindent 12 }}
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: {{ $cfg.port }}
+            initialDelaySeconds: 15
+            periodSeconds: 20
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: {{ $cfg.port }}
+            initialDelaySeconds: 5
+            periodSeconds: 10
+{{- end }}
