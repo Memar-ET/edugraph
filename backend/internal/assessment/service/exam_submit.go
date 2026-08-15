@@ -156,6 +156,7 @@ func (s *Service) SubmitExam(ctx context.Context, userID, examID uuid.UUID, req 
 		}
 		resp.TotalScore, resp.Percentage, resp.Passed = total, pct, passed
 		s.enqueueGapAnalysis(ctx, attemptID)
+		s.recordLearningEventsAndTrace(ctx, attemptID)
 	}
 	return resp, nil
 }
@@ -167,6 +168,26 @@ func (s *Service) SubmitExam(ctx context.Context, userID, examID uuid.UUID, req 
 func (s *Service) enqueueGapAnalysis(ctx context.Context, attemptID uuid.UUID) {
 	if err := s.redis.LPush(ctx, "queue:gap:analyze", attemptID.String()).Err(); err != nil {
 		fmt.Printf("⚠️ Redis queue push failed for gap analysis of attempt %s: %v\n", attemptID, err)
+	}
+}
+
+// recordLearningEventsAndTrace is EG-GCKT Milestone 1's event-wiring seam
+// -- called at the exact point an attempt is confirmed fully graded, same
+// as enqueueGapAnalysis. Unlike the Neo4j mirrors and the gap-analysis
+// queue push, students.learning_events itself is written synchronously
+// and transactionally here (not best-effort/async) because it's the
+// record every downstream EG-GCKT engine depends on for correctness --
+// see RecordLearningEvents' doc comment. Only the *notification* to
+// ai-service (queue:gckt:trace, a separate Redis list from
+// queue:gap:analyze so BRPOP on one queue can never starve the other's
+// consumer) is best-effort/non-fatal, matching enqueueGapAnalysis.
+func (s *Service) recordLearningEventsAndTrace(ctx context.Context, attemptID uuid.UUID) {
+	if err := s.repo.RecordLearningEvents(ctx, attemptID); err != nil {
+		fmt.Printf("⚠️ Failed to record learning events for attempt %s: %v\n", attemptID, err)
+		return
+	}
+	if err := s.redis.LPush(ctx, "queue:gckt:trace", attemptID.String()).Err(); err != nil {
+		fmt.Printf("⚠️ Redis queue push failed for knowledge tracing of attempt %s: %v\n", attemptID, err)
 	}
 }
 
@@ -261,6 +282,7 @@ func (s *Service) BulkGradeExam(ctx context.Context, examID, gradedBy uuid.UUID,
 		// worth analyzing.
 		if total, _, _, err := s.repo.FetchAttemptTotals(ctx, *attemptID); err == nil && total != nil {
 			s.enqueueGapAnalysis(ctx, *attemptID)
+			s.recordLearningEventsAndTrace(ctx, *attemptID)
 		}
 		attemptsTouched++
 		answersSaved += len(answers)

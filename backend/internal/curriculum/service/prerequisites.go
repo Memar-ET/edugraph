@@ -11,8 +11,8 @@ import (
 	apperrors "github.com/edugraph-ai/edugraph/pkg/errors"
 )
 
-// AddTopicPrerequisite validates and records a "topic requires
-// prerequisite" edge, then best-effort mirrors it into Neo4j (the graph
+// AddTopicPrerequisite validates and records a typed prerequisite edge
+// (spec section 6.2), then best-effort mirrors it into Neo4j (the graph
 // the gap-analysis root-cause walk and study-plan topological sort
 // traverse). Postgres commit is the success criterion; a graph failure is
 // reported in the response, not an error -- matching Approve's contract.
@@ -31,8 +31,16 @@ func (s *Service) AddTopicPrerequisite(
 		weight = *req.Weight
 	}
 
-	inferMethod := req.InferMethod
-	link, err := s.repo.AddTopicPrerequisite(ctx, topicID, prereqID, weight, inferMethod, userID)
+	link, err := s.repo.AddTopicPrerequisite(ctx, repository.AddPrerequisiteParams{
+		TopicID:     topicID,
+		PrereqID:    prereqID,
+		Weight:      weight,
+		InferMethod: req.InferMethod,
+		EdgeType:    req.EdgeType,
+		Confidence:  req.Confidence,
+		Evidence:    req.Evidence,
+		UserID:      userID,
+	})
 	if errors.Is(err, repository.ErrTopicNotFound) {
 		return nil, apperrors.NotFound("topic or prerequisite topic not found")
 	}
@@ -49,9 +57,10 @@ func (s *Service) AddTopicPrerequisite(
 // ValidatePrerequisite confirms an existing "ai_inferred" (or any other)
 // link -- the counterpart to AddTopicPrerequisite's inferMethod handling
 // (feature 1.4). Re-syncs the link's isValidated property into Neo4j
-// afterwards, same best-effort contract as creation.
-func (s *Service) ValidatePrerequisite(ctx context.Context, userID, topicID, prereqID uuid.UUID) (*dto.AddPrerequisiteResponse, error) {
-	link, err := s.repo.ValidatePrerequisite(ctx, topicID, prereqID, userID)
+// afterwards, same best-effort contract as creation. edgeType defaults to
+// "requires" when the caller doesn't specify one (pre-EG-GCKT behavior).
+func (s *Service) ValidatePrerequisite(ctx context.Context, userID, topicID, prereqID uuid.UUID, edgeType string) (*dto.AddPrerequisiteResponse, error) {
+	link, err := s.repo.ValidatePrerequisite(ctx, topicID, prereqID, userID, edgeType)
 	if errors.Is(err, repository.ErrPrerequisiteNotFound) {
 		return nil, apperrors.NotFound("prerequisite link not found")
 	}
@@ -70,12 +79,12 @@ func (s *Service) syncPrerequisiteAndRespond(ctx context.Context, link dto.Prere
 	prereqID := uuid.MustParse(link.PrerequisiteTopicID)
 
 	resp := &dto.AddPrerequisiteResponse{Link: link, GraphSynced: true}
-	if err := s.repo.SyncPrerequisiteToNeo4j(ctx, topicID, prereqID, link.Weight, link.IsValidated, link.InferMethod); err != nil {
+	if err := s.repo.SyncPrerequisiteToNeo4j(ctx, topicID, prereqID, link.Weight, link.IsValidated, link.InferMethod, link.EdgeType, link.Confidence); err != nil {
 		resp.GraphSynced = false
 		resp.GraphError = err.Error()
 		return resp
 	}
-	if err := s.repo.MarkPrerequisiteSynced(ctx, topicID, prereqID); err != nil {
+	if err := s.repo.MarkPrerequisiteSynced(ctx, topicID, prereqID, link.EdgeType); err != nil {
 		resp.GraphSynced = false
 		resp.GraphError = err.Error()
 	}
@@ -94,17 +103,27 @@ func (s *Service) ResyncPrerequisitesToNeo4j(ctx context.Context) (*dto.ResyncPr
 
 	resp := &dto.ResyncPrerequisitesResponse{}
 	for _, p := range pending {
-		if err := s.repo.SyncPrerequisiteToNeo4j(ctx, p.TopicID, p.PrereqID, p.Weight, p.IsValidated, p.InferMethod); err != nil {
+		if err := s.repo.SyncPrerequisiteToNeo4j(ctx, p.TopicID, p.PrereqID, p.Weight, p.IsValidated, p.InferMethod, p.EdgeType, p.Confidence); err != nil {
 			resp.Failed++
 			continue
 		}
-		if err := s.repo.MarkPrerequisiteSynced(ctx, p.TopicID, p.PrereqID); err != nil {
+		if err := s.repo.MarkPrerequisiteSynced(ctx, p.TopicID, p.PrereqID, p.EdgeType); err != nil {
 			resp.Failed++
 			continue
 		}
 		resp.Synced++
 	}
 	return resp, nil
+}
+
+// ListPrerequisiteReviewHistory returns the full review history for one
+// prerequisite edge (Milestone 11's explainability/audit surface).
+func (s *Service) ListPrerequisiteReviewHistory(ctx context.Context, topicID, prereqID uuid.UUID, edgeType string) ([]dto.PrerequisiteReviewHistoryEntry, error) {
+	history, err := s.repo.ListPrerequisiteReviewHistory(ctx, topicID, prereqID, edgeType)
+	if err != nil {
+		return nil, apperrors.Internal(err)
+	}
+	return history, nil
 }
 
 // ListTopicPrerequisites returns a topic's direct prerequisites.

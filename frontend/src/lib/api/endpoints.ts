@@ -13,6 +13,7 @@ import type {
   CreateCareerPathRequest,
   CreateNotificationRequest,
   Envelope,
+  Explanation,
   ExamInsight,
   ExamInsightListEntry,
   ExamQualityResponse,
@@ -26,14 +27,20 @@ import type {
   LoginRequest,
   PaginationMeta,
   MinistryOverviewResponse,
+  MisconceptionHypothesis,
+  ModelSnapshot,
   NotificationResponse,
   PrerequisiteLink,
+  PrerequisiteQualityReport,
+  PrerequisiteReviewHistoryEntry,
   PublishResponse,
+  QMatrixQualityReport,
   RegionResponse,
   RegionStatsResponse,
   ResyncPrerequisitesResponse,
   SchoolQualityResponse,
   SchoolResponse,
+  SkillStateSnapshot,
   StudentResponse,
   StudyPlan,
   SubjectGraph,
@@ -418,15 +425,33 @@ export async function addTopicPrerequisite(
   return unwrap(res.data)
 }
 
-export async function validatePrerequisite(topicId: string, prereqId: string): Promise<AddPrerequisiteResponse> {
+export async function validatePrerequisite(
+  topicId: string,
+  prereqId: string,
+  edgeType?: string,
+): Promise<AddPrerequisiteResponse> {
   const res = await apiClient.patch<Envelope<AddPrerequisiteResponse>>(
     `/curriculum/topics/${topicId}/prerequisites/${prereqId}/validate`,
+    undefined,
+    { params: { edgeType } },
   )
   return unwrap(res.data)
 }
 
 export async function resyncPrerequisites(): Promise<ResyncPrerequisitesResponse> {
   const res = await apiClient.post<Envelope<ResyncPrerequisitesResponse>>('/curriculum/prerequisites/resync')
+  return unwrap(res.data)
+}
+
+export async function getPrerequisiteHistory(
+  topicId: string,
+  prereqId: string,
+  edgeType?: string,
+): Promise<PrerequisiteReviewHistoryEntry[]> {
+  const res = await apiClient.get<Envelope<PrerequisiteReviewHistoryEntry[]>>(
+    `/curriculum/topics/${topicId}/prerequisites/${prereqId}/history`,
+    { params: { edgeType } },
+  )
   return unwrap(res.data)
 }
 
@@ -458,6 +483,68 @@ export async function getSubjectGraph(subjectCode: string, includeClos = false):
   const res = await apiClient.get<Envelope<SubjectGraph>>(
     `/curriculum/subjects/${encodeURIComponent(subjectCode)}/graph`,
     { params: { includeClos: includeClos ? 'true' : undefined } },
+  )
+  return unwrap(res.data)
+}
+
+// ── EG-GCKT model governance (Milestone 9) ────────────────────────
+
+export async function listCandidateModelSnapshots(): Promise<ModelSnapshot[]> {
+  const res = await apiClient.get<Envelope<ModelSnapshot[]>>('/model-snapshots/candidates')
+  return unwrap(res.data)
+}
+
+export async function promoteModelSnapshot(id: string): Promise<ModelSnapshot> {
+  const res = await apiClient.post<Envelope<ModelSnapshot>>(`/model-snapshots/${id}/promote`)
+  return unwrap(res.data)
+}
+
+export async function rejectModelSnapshot(id: string): Promise<ModelSnapshot> {
+  const res = await apiClient.post<Envelope<ModelSnapshot>>(`/model-snapshots/${id}/reject`)
+  return unwrap(res.data)
+}
+
+// ── EG-GCKT misconception review queue (Milestone 6) ──────────────
+
+export async function listCandidateMisconceptions(): Promise<MisconceptionHypothesis[]> {
+  const res = await apiClient.get<Envelope<MisconceptionHypothesis[]>>('/misconceptions')
+  return unwrap(res.data)
+}
+
+export async function reviewMisconception(
+  id: string,
+  decision: 'confirmed' | 'rejected',
+): Promise<MisconceptionHypothesis> {
+  const res = await apiClient.patch<Envelope<MisconceptionHypothesis>>(`/misconceptions/${id}/review`, { decision })
+  return unwrap(res.data)
+}
+
+// ── EG-GCKT quality reports ────────────────────────────────────────
+
+export async function getQMatrixQuality(subjectCode: string): Promise<QMatrixQualityReport> {
+  const res = await apiClient.get<Envelope<QMatrixQualityReport>>(
+    `/curriculum/subjects/${encodeURIComponent(subjectCode)}/qmatrix-quality`,
+  )
+  return unwrap(res.data)
+}
+
+export async function getPrerequisiteQuality(subjectCode: string): Promise<PrerequisiteQualityReport> {
+  const res = await apiClient.get<Envelope<PrerequisiteQualityReport>>(
+    `/curriculum/subjects/${encodeURIComponent(subjectCode)}/prerequisite-quality`,
+  )
+  return unwrap(res.data)
+}
+
+// ── EG-GCKT explainability (Milestone 11) ─────────────────────────
+
+export async function getExplanation(studentId: string, topicId: string): Promise<Explanation> {
+  const res = await apiClient.get<Envelope<Explanation>>(`/students/${studentId}/topics/${topicId}/explain`)
+  return unwrap(res.data)
+}
+
+export async function getSkillStateSnapshots(studentId: string, topicId: string): Promise<SkillStateSnapshot[]> {
+  const res = await apiClient.get<Envelope<SkillStateSnapshot[]>>(
+    `/students/${studentId}/topics/${topicId}/state-snapshots`,
   )
   return unwrap(res.data)
 }

@@ -4,6 +4,8 @@ export const queryKeys = {
   curriculumTopics: (subjectCode: string) => ['curriculum', 'subjects', subjectCode, 'topics'] as const,
   subjects: () => ['curriculum', 'subjects'] as const,
   topicPrerequisites: (topicId: string) => ['curriculum', 'topics', topicId, 'prerequisites'] as const,
+  prerequisiteHistory: (topicId: string, prereqId: string, edgeType: string) =>
+    ['curriculum', 'topics', topicId, 'prerequisites', prereqId, 'history', edgeType] as const,
   subjectVersions: (subjectCode: string) => ['curriculum', 'subjects', subjectCode, 'versions'] as const,
   subjectGraph: (subjectCode: string, includeClos: boolean) =>
     ['curriculum', 'subjects', subjectCode, 'graph', includeClos] as const,
@@ -28,4 +30,9 @@ export const queryKeys = {
   school: (schoolId: string) => ['schools', schoolId] as const,
   teachers: (schoolId: string) => ['teachers', schoolId] as const,
   notifications: () => ['notifications'] as const,
+  modelSnapshotCandidates: () => ['model-snapshots', 'candidates'] as const,
+  candidateMisconceptions: () => ['misconceptions', 'candidates'] as const,
+  explanation: (studentId: string, topicId: string) => ['students', studentId, 'topics', topicId, 'explain'] as const,
+  skillStateSnapshots: (studentId: string, topicId: string) =>
+    ['students', studentId, 'topics', topicId, 'state-snapshots'] as const,
 }

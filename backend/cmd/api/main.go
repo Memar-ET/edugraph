@@ -36,6 +36,10 @@ import (
 	ministryrepo "github.com/edugraph-ai/edugraph/internal/ministry/repository"
 	ministrysvc "github.com/edugraph-ai/edugraph/internal/ministry/service"
 
+	modelinghandler "github.com/edugraph-ai/edugraph/internal/modeling/handler"
+	modelingrepo "github.com/edugraph-ai/edugraph/internal/modeling/repository"
+	modelingsvc "github.com/edugraph-ai/edugraph/internal/modeling/service"
+
 	notificationhandler "github.com/edugraph-ai/edugraph/internal/notification/handler"
 	notificationrepo "github.com/edugraph-ai/edugraph/internal/notification/repository"
 	notificationsvc "github.com/edugraph-ai/edugraph/internal/notification/service"
@@ -206,6 +210,12 @@ func main() {
 	storageService := storagesvc.New(storageRepo, cfg.AWS)
 	storageHandler := storagehandler.New(storageService)
 
+	// EG-GCKT Milestone 9: model-governance review queue for BKT/DINA/IRT
+	// nightly refit candidates (ai-service/app/workers/refit_worker.py).
+	modelingRepository := modelingrepo.New(pgPool)
+	modelingService := modelingsvc.New(modelingRepository)
+	modelingHandler := modelinghandler.New(modelingService)
+
 	// Router
 	router := newRouter(cfg, log, authService, syncService, handlers{
 		auth:         authHandler,
@@ -221,6 +231,7 @@ func main() {
 		notification: notificationHandler,
 		jobs:         jobsHandler,
 		storage:      storageHandler,
+		modeling:     modelingHandler,
 	})
 
 	srv := &http.Server{

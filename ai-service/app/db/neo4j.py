@@ -110,3 +110,72 @@ async def fetch_prerequisite_edges_among(topic_ids: list[str]) -> list[tuple[str
     except Exception:  # noqa: BLE001
         logger.warning("neo4j.prerequisite_edges_unavailable", count=len(topic_ids))
         return []
+
+
+async def fetch_downstream_dependents(topic_id: str, max_depth: int = 3) -> list[dict]:
+    """The reverse of fetch_prerequisite_chain: every topic that has
+    topic_id somewhere in its OWN upstream prerequisite chain -- the
+    EG-GCKT root-cause engine's DownstreamImpact factor (spec section 9,
+    Milestone 5). Restricted to requires/strongly_requires edges only,
+    same rationale as CohortRootCauseNeo4j's cross-grade walk (Milestone
+    0): a similar_to/related_to edge doesn't mean "fixing this unlocks
+    that." Returns [] on empty graph or Neo4j being down, same contract
+    as every other function in this module -- callers fall back to
+    fetch_downstream_dependents_pg."""
+    query = (
+        "MATCH path = (dependent:Topic)-[:HAS_PREREQUISITE*1..%d]->(t:Topic {id: $topicId}) "
+        "WHERE ALL(rel IN relationships(path) WHERE coalesce(rel.edgeType, 'requires') IN ['requires', 'strongly_requires']) "
+        "WITH dependent, min(length(path)) AS depth "
+        "RETURN dependent.id AS id, depth"
+        % max_depth
+    )
+    try:
+        driver = get_driver()
+        records, _summary, _keys = await driver.execute_query(query, topicId=topic_id, database_="neo4j")
+        return [{"id": r["id"], "depth": r["depth"]} for r in records]
+    except Exception:  # noqa: BLE001 -- graph unavailability must never fail analysis
+        logger.warning("neo4j.downstream_dependents_unavailable", topic_id=topic_id)
+        return []
+
+
+async def sync_skill_state(
+    student_id: str,
+    topic_id: str,
+    *,
+    mastery_probability: Optional[float],
+    mastery_status: str,
+    uncertainty: Optional[float],
+    trend: Optional[str],
+) -> bool:
+    """Mirrors one students.skill_states row as
+    (:Student {id})-[:HAS_SKILL_STATE]->(:Topic {id}) -- the EG-GCKT
+    Student Knowledge State Graph overlay (spec section 6.4) on the
+    existing Topic node, not a duplicated per-student subgraph, matching
+    the existing (:Student)-[:STRUGGLED_WITH]->(:Topic) pattern the Go
+    side already writes (gap_sync.go). Best-effort: returns False (never
+    raises) on any Neo4j error, since Postgres (students.skill_states) is
+    the system of record -- callers mark neo4j_written accordingly.
+    """
+    query = (
+        "MERGE (s:Student {id: $studentId}) "
+        "MERGE (t:Topic {id: $topicId}) "
+        "MERGE (s)-[rel:HAS_SKILL_STATE]->(t) "
+        "SET rel.masteryProbability = $masteryProbability, rel.masteryStatus = $masteryStatus, "
+        "    rel.uncertainty = $uncertainty, rel.trend = $trend, rel.updatedAt = datetime()"
+    )
+    try:
+        driver = get_driver()
+        await driver.execute_query(
+            query,
+            studentId=student_id,
+            topicId=topic_id,
+            masteryProbability=mastery_probability,
+            masteryStatus=mastery_status,
+            uncertainty=uncertainty,
+            trend=trend,
+            database_="neo4j",
+        )
+        return True
+    except Exception:  # noqa: BLE001 -- graph unavailability must never fail fusion
+        logger.warning("neo4j.skill_state_sync_failed", student_id=student_id, topic_id=topic_id)
+        return False

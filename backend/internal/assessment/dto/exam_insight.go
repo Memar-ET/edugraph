@@ -23,6 +23,15 @@ type GapRecordEntry struct {
 	SeverityScore       float64    `json:"severityScore"`
 	PrerequisiteDepth   int        `json:"prerequisiteDepth"`
 	LlmExplanation      *string    `json:"llmExplanation"`
+	// EG-GCKT checklist follow-up (spec section 10): the Root Cause Score
+	// and its five component factors, plus the graph path from symptom to
+	// root cause -- "expose the evidence behind the root-cause score."
+	// RcsFactors/RootCausePath are raw embedded JSON (not double-decoded
+	// into a Go struct) since their shape is owned by ai-service's
+	// root_cause.py, not by this handler.
+	RcsScore      *float64        `json:"rcsScore,omitempty"`
+	RcsFactors    json.RawMessage `json:"rcsFactors,omitempty"`
+	RootCausePath json.RawMessage `json:"rootCausePath,omitempty"`
 }
 
 // ExamInsight is the Exam Insight Layer (students.exam_insights) plus its

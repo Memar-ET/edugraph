@@ -12,6 +12,7 @@ import (
 	curriculumhandler "github.com/edugraph-ai/edugraph/internal/curriculum/handler"
 	jobshandler "github.com/edugraph-ai/edugraph/internal/jobs/handler"
 	ministryhandler "github.com/edugraph-ai/edugraph/internal/ministry/handler"
+	modelinghandler "github.com/edugraph-ai/edugraph/internal/modeling/handler"
 	notificationhandler "github.com/edugraph-ai/edugraph/internal/notification/handler"
 	regionhandler "github.com/edugraph-ai/edugraph/internal/region/handler"
 	schoolhandler "github.com/edugraph-ai/edugraph/internal/school/handler"
@@ -47,6 +48,7 @@ type handlers struct {
 	notification *notificationhandler.Handler
 	jobs         *jobshandler.Handler
 	storage      *storagehandler.Handler
+	modeling     *modelinghandler.Handler
 }
 
 func newRouter(cfg config.Config, log *zap.Logger, verifier middleware.TokenVerifier, deviceVerifier synchandler.DeviceVerifier, h handlers) http.Handler {
@@ -137,6 +139,18 @@ func newRouter(cfg config.Config, log *zap.Logger, verifier middleware.TokenVeri
 				// Capability 3B: study plans generated from gap records.
 				r.With(middleware.RequireRole(roleStudent)).Post("/me/study-plans", h.assessment.GenerateStudyPlan)
 				r.With(middleware.RequireRole(roleStudent)).Get("/me/study-plans", h.assessment.ListMyStudyPlans)
+
+				// EG-GCKT Milestone 11: five-part explanation (spec section
+				// 18). {id} is caller-supplied -- Service.authorizeExplain
+				// enforces ownership server-side (own record for a student,
+				// same-school for a teacher/school_admin), not the role gate
+				// alone, the same lesson checklist 11.3's career-matches fix
+				// already established for this codebase.
+				r.Get("/{id}/topics/{topicId}/explain", h.modeling.Explain)
+				// EG-GCKT checklist sections 6/18/22: historical state
+				// snapshots for comparison over time. Same authorization as
+				// Explain.
+				r.Get("/{id}/topics/{topicId}/state-snapshots", h.modeling.ListSkillStateSnapshots)
 			})
 
 			// ── Teachers ──────────────────────────────────────
@@ -175,6 +189,8 @@ func newRouter(cfg config.Config, log *zap.Logger, verifier middleware.TokenVeri
 				r.Get("/topics/{id}/prerequisites", h.curriculum.ListTopicPrerequisites)
 				// Feature 1.4: confirm a link (typically one created "ai_inferred").
 				r.With(middleware.RequireRole(roleMinistryAdmin, roleTeacher, roleCurriculumOfficer)).Patch("/topics/{id}/prerequisites/{prereqId}/validate", h.curriculum.ValidatePrerequisite)
+				// EG-GCKT: append-only review history for one prerequisite edge.
+				r.Get("/topics/{id}/prerequisites/{prereqId}/history", h.curriculum.PrerequisiteHistory)
 				// Feature 1.5: bulk catch-up sync of the whole prerequisite graph into Neo4j.
 				r.With(middleware.RequireRole(roleMinistryAdmin)).Post("/prerequisites/resync", h.curriculum.ResyncPrerequisites)
 				// Curriculum Officer dashboard: the officer's own upload/approval history.
@@ -191,6 +207,12 @@ func newRouter(cfg config.Config, log *zap.Logger, verifier middleware.TokenVeri
 				// Neo4j knowledge-graph subtree for a subject -- backs the
 				// frontend graph visualization.
 				r.Get("/subjects/{code}/graph", h.curriculum.GetSubjectGraph)
+				// EG-GCKT checklist sections 4/5/16: structural quality
+				// reports (missing/low-confidence/ambiguous Q-matrix
+				// mappings; orphaned topics and low-confidence prerequisite
+				// edges), scoped to one subject.
+				r.With(middleware.RequireRole(roleCurriculumOfficer, roleMinistryAdmin)).Get("/subjects/{code}/qmatrix-quality", h.curriculum.QMatrixQuality)
+				r.With(middleware.RequireRole(roleCurriculumOfficer, roleMinistryAdmin)).Get("/subjects/{code}/prerequisite-quality", h.curriculum.PrerequisiteQuality)
 			})
 
 			// ── Exams (Capability 2A: upload + AI parsing; 2B: AI validation report; 2C: submission) ──
@@ -221,6 +243,33 @@ func newRouter(cfg config.Config, log *zap.Logger, verifier middleware.TokenVeri
 				// blank exam sheet is teacher-initiated (print then hand out).
 				r.With(middleware.RequireRole(roleTeacher, roleSchoolAdmin)).Get("/{id}/print", h.assessment.PrintExam)
 				r.With(middleware.RequireRole(roleTeacher, roleSchoolAdmin)).Get("/{id}/print/answer-key", h.assessment.PrintAnswerKey)
+			})
+
+			// ── EG-GCKT: versioned Q-matrix (spec section 6.3) ──
+			// Lives on the curriculum handler (dto/repository/service all in
+			// the curriculum package, mirroring prerequisites.go's shape)
+			// even though it's mounted under /questions -- the Q-matrix maps
+			// assessment items to curriculum skills, so it's curriculum
+			// domain logic operating on an assessment.questions foreign key,
+			// same relationship topic_clo_mappings already has.
+			r.Route("/questions", func(r chi.Router) {
+				r.With(middleware.RequireRole(roleMinistryAdmin, roleTeacher, roleCurriculumOfficer)).Post("/{id}/skill-mappings", h.curriculum.AddItemSkillMapping)
+				r.Get("/{id}/skill-mappings", h.curriculum.ListItemSkillMappings)
+				r.With(middleware.RequireRole(roleMinistryAdmin)).Post("/skill-mappings/resync", h.curriculum.ResyncItemSkillMappings)
+			})
+
+			// ── EG-GCKT: misconception review queue (spec section 11) ──
+			r.Route("/misconceptions", func(r chi.Router) {
+				r.With(middleware.RequireRole(roleTeacher, roleSchoolAdmin)).Get("/", h.assessment.ListCandidateMisconceptions)
+				r.With(middleware.RequireRole(roleTeacher, roleSchoolAdmin)).Patch("/{id}/review", h.assessment.ReviewMisconception)
+			})
+
+			// ── EG-GCKT Milestone 9: model-governance review queue ──
+			// (BKT/DINA/IRT nightly refit candidates, spec section 19).
+			r.Route("/model-snapshots", func(r chi.Router) {
+				r.With(middleware.RequireRole(roleMinistryAdmin, roleCurriculumOfficer)).Get("/candidates", h.modeling.ListCandidateSnapshots)
+				r.With(middleware.RequireRole(roleMinistryAdmin)).Post("/{id}/promote", h.modeling.PromoteSnapshot)
+				r.With(middleware.RequireRole(roleMinistryAdmin)).Post("/{id}/reject", h.modeling.RejectSnapshot)
 			})
 
 			// ── AI Tutor (Capability 3C: Graph-RAG + Gemini) ──

@@ -18,6 +18,7 @@ import {
   PrerequisitesPage,
   UploadPage,
 } from '@features/curriculum'
+import { ExplainPage, ModelGovernancePage } from '@features/modeling'
 import {
   ExamQualityPage,
   ExamReviewPage,
@@ -27,7 +28,7 @@ import {
   TakeExamPage,
 } from '@features/assessment'
 import { StudentDashboardPage, TutorPage } from '@features/student'
-import { TeacherDashboardPage } from '@features/teacher'
+import { MisconceptionReviewPage, TeacherDashboardPage } from '@features/teacher'
 import { SchoolAdminDashboardPage } from '@features/school-admin'
 import { RegionalDashboardPage } from '@features/regional'
 import { MinistryDashboardPage } from '@features/ministry'
@@ -102,6 +103,16 @@ function requireCurriculumAccess() {
   if (!canAccessCurriculumReview(user?.role)) throw redirect({ to: '/' })
 }
 
+// The EG-GCKT explain endpoint is role-open (every role can reach it) --
+// server-side ownership (own record for a student, same-school for a
+// teacher/school_admin) is enforced in Service.authorizeExplain, not by a
+// route-level role allowlist. The frontend guard here only needs to
+// check authentication.
+function requireAuth() {
+  const { isAuthenticated } = useAuthStore.getState()
+  if (!isAuthenticated) throw redirect({ to: '/login' })
+}
+
 // Guards teacher exam routes (Capabilities 2A/2B/2C Flow 2, 4A, 4B) --
 // matches RequireRole(roleTeacher, roleSchoolAdmin) on the Go side.
 function requireTeacherAccess() {
@@ -160,6 +171,27 @@ const curriculumGraphRoute = createRoute({
   component: CurriculumGraphPage,
 })
 
+// EG-GCKT Milestone 9: model-governance review queue. Reuses
+// requireCurriculumAccess (curriculum_officer/ministry_admin) for
+// page-level access, matching this page's own List endpoint's RBAC;
+// Promote/Reject are ministry_admin-only server-side (router.go), same
+// "different actions, different RBAC within one page" precedent as
+// PrerequisitesPage's ministry_admin-only Resync panel.
+const modelGovernanceRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/model-governance',
+  beforeLoad: requireCurriculumAccess,
+  component: ModelGovernancePage,
+})
+
+// EG-GCKT Milestone 11 (spec section 18): five-part explanation viewer.
+const explainRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/students/$studentId/topics/$topicId/explain',
+  beforeLoad: requireAuth,
+  component: ExplainPage,
+})
+
 const ministryCurriculumRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/ministry/curriculum',
@@ -209,6 +241,14 @@ const examQualityRoute = createRoute({
   component: ExamQualityPage,
 })
 
+// EG-GCKT Milestone 11: misconception review queue.
+const misconceptionReviewRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/teacher/misconceptions',
+  beforeLoad: requireTeacherAccess,
+  component: MisconceptionReviewPage,
+})
+
 const studentExamListRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/student/exams',
@@ -245,6 +285,8 @@ const routeTree = rootRoute.addChildren([
   prerequisitesRoute,
   curriculumVersionsRoute,
   curriculumGraphRoute,
+  modelGovernanceRoute,
+  explainRoute,
   ministryCurriculumRoute,
   ministryCurriculumDetailRoute,
   jobReviewRoute,
@@ -252,6 +294,7 @@ const routeTree = rootRoute.addChildren([
   examReviewRoute,
   gradeExamRoute,
   examQualityRoute,
+  misconceptionReviewRoute,
   studentExamListRoute,
   takeExamRoute,
   tutorRoute,

@@ -108,13 +108,21 @@ func (r *Repository) HeatmapNeo4j(ctx context.Context, schoolID uuid.UUID, subje
 // pick the one the most cohort students also carry a STRUGGLED_WITH edge
 // for (3A's isRootCause edges are what usually put those there). Returns
 // nil, nil when no lower-grade prerequisite has any cohort strugglers.
+//
+// EG-GCKT (Milestone 0) added typed prerequisite edges -- edgeType
+// defaults to 'requires' on every pre-existing row, but non-'requires'
+// edges (similar_to, related_to, ...) are soft associations, not
+// dependency chains, and must never be walked here as if fixing an
+// upstream "similar" topic would relieve a downstream one. The path
+// filter restricts every hop to the two hard-dependency edge types.
 func (r *Repository) CohortRootCauseNeo4j(ctx context.Context, schoolID uuid.UUID, topicID string, gradeLevel int) (*RootCauseRow, error) {
 	session := r.neo4j.NewSession(ctx, neo4jdriver.SessionConfig{AccessMode: neo4jdriver.AccessModeRead})
 	defer session.Close(ctx)
 
 	result, err := session.Run(ctx, `
-		MATCH (t:Topic {id: $topicId})-[:HAS_PREREQUISITE*1..3]->(p:Topic)
+		MATCH path = (t:Topic {id: $topicId})-[:HAS_PREREQUISITE*1..3]->(p:Topic)
 		WHERE p.gradeLevel < t.gradeLevel
+		  AND ALL(rel IN relationships(path) WHERE coalesce(rel.edgeType, 'requires') IN ['requires', 'strongly_requires'])
 		MATCH (:School {id: $schoolId})-[:ENROLLS]->(s:Student)-[:STRUGGLED_WITH]->(p)
 		WHERE s.gradeLevel = $gradeLevel
 		RETURN p.id AS topicId, p.titleEn AS title, p.gradeLevel AS grade,
