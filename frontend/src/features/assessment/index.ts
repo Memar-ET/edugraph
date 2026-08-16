@@ -1,6 +1,8 @@
+export { ExamAvailabilityPage } from './ExamAvailabilityPage'
 export { ExamUploadPage } from './ExamUploadPage'
 export { ExamReviewPage } from './ExamReviewPage'
 export { ExamQualityPage } from './ExamQualityPage'
 export { GradeExamPage } from './GradeExamPage'
+export { PreExamPage } from './PreExamPage'
 export { StudentExamListPage } from './StudentExamListPage'
 export { TakeExamPage } from './TakeExamPage'

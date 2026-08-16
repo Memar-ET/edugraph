@@ -12,6 +12,7 @@ import (
 	curriculumhandler "github.com/edugraph-ai/edugraph/internal/curriculum/handler"
 	jobshandler "github.com/edugraph-ai/edugraph/internal/jobs/handler"
 	ministryhandler "github.com/edugraph-ai/edugraph/internal/ministry/handler"
+	reportshandler "github.com/edugraph-ai/edugraph/internal/reports/handler"
 	modelinghandler "github.com/edugraph-ai/edugraph/internal/modeling/handler"
 	notificationhandler "github.com/edugraph-ai/edugraph/internal/notification/handler"
 	regionhandler "github.com/edugraph-ai/edugraph/internal/region/handler"
@@ -49,11 +50,15 @@ type handlers struct {
 	jobs         *jobshandler.Handler
 	storage      *storagehandler.Handler
 	modeling     *modelinghandler.Handler
+	reports      *reportshandler.Handler
 }
 
 func newRouter(cfg config.Config, log *zap.Logger, verifier middleware.TokenVerifier, deviceVerifier synchandler.DeviceVerifier, h handlers) http.Handler {
 	r := chi.NewRouter()
 
+	// Outermost middleware — applied to every path including /health.
+	r.Use(middleware.SecurityHeaders(cfg.AppEnv))
+	r.Use(middleware.RequestID)
 	r.Use(middleware.Recover(log))
 	r.Use(middleware.Logging(log))
 	r.Use(middleware.CORS(cfg.CORSOrigins))
@@ -64,9 +69,16 @@ func newRouter(cfg config.Config, log *zap.Logger, verifier middleware.TokenVeri
 
 	authenticated := middleware.Authenticate(verifier)
 
+	// Rate limiters — token bucket, stdlib only, no external deps.
+	// Auth endpoints: 10 req/s burst-20 per IP (brute-force protection).
+	authLimiter := middleware.NewRateLimiter(10, 20, middleware.IPKey)
+	// Authenticated API: 60 req/s burst-120 per authenticated user.
+	apiLimiter := middleware.NewRateLimiter(60, 120, middleware.UserKey)
+
 	r.Route("/api/v1", func(r chi.Router) {
 		// ── Auth ──────────────────────────────────────────────
 		r.Route("/auth", func(r chi.Router) {
+			r.Use(authLimiter)
 			r.Post("/register", h.auth.Register)
 			r.Post("/login", h.auth.Login)
 			r.Post("/refresh", h.auth.Refresh)
@@ -88,6 +100,7 @@ func newRouter(cfg config.Config, log *zap.Logger, verifier middleware.TokenVeri
 		// Everything below requires a valid access token.
 		r.Group(func(r chi.Router) {
 			r.Use(authenticated)
+			r.Use(apiLimiter)
 
 			// ── Regions ───────────────────────────────────────
 			r.Route("/regions", func(r chi.Router) {
@@ -197,6 +210,8 @@ func newRouter(cfg config.Config, log *zap.Logger, verifier middleware.TokenVeri
 				r.Get("/topics/{id}/prerequisites/{prereqId}/history", h.curriculum.PrerequisiteHistory)
 				// Feature 1.5: bulk catch-up sync of the whole prerequisite graph into Neo4j.
 				r.With(middleware.RequireRole(roleMinistryAdmin)).Post("/prerequisites/resync", h.curriculum.ResyncPrerequisites)
+				// CUR-05: bulk resync of all (:Topic)-[:HAS_CLO]->(:CLO) edges into Neo4j.
+				r.With(middleware.RequireRole(roleMinistryAdmin)).Post("/clos/resync", h.curriculum.ResyncCLOs)
 				// Curriculum Officer dashboard: the officer's own upload/approval history.
 				r.With(middleware.RequireRole(roleCurriculumOfficer, roleMinistryAdmin)).Get("/jobs", h.curriculum.ListJobs)
 				// Mid-year revisions (feature 1.3): link an already-approved
@@ -228,6 +243,9 @@ func newRouter(cfg config.Config, log *zap.Logger, verifier middleware.TokenVeri
 				// without re-uploading the file, then re-run /validate.
 				r.With(middleware.RequireRole(roleTeacher, roleSchoolAdmin)).Patch("/{id}/scope", h.assessment.UpdateExamScope)
 				r.With(middleware.RequireRole(roleTeacher, roleSchoolAdmin)).Post("/{id}/publish", h.assessment.PublishExam)
+				r.With(middleware.RequireRole(roleTeacher, roleSchoolAdmin)).Post("/{id}/close", h.assessment.CloseExam)
+				r.With(middleware.RequireRole(roleStudent)).Post("/{id}/autosave", h.assessment.AutosaveExamDraft)
+				r.With(middleware.RequireRole(roleStudent)).Get("/{id}/draft", h.assessment.GetExamDraft)
 				r.With(middleware.RequireRole(roleTeacher, roleSchoolAdmin)).Post("/{id}/answer-key", h.assessment.UploadAnswerKey)
 				r.With(middleware.RequireRole(roleStudent)).Get("/{id}/questions", h.assessment.ListExamQuestions)
 				r.With(middleware.RequireRole(roleStudent)).Post("/{id}/submit", h.assessment.SubmitExam)
@@ -285,6 +303,12 @@ func newRouter(cfg config.Config, log *zap.Logger, verifier middleware.TokenVeri
 			r.Route("/career", func(r chi.Router) {
 				r.Get("/paths", h.career.List)
 				r.With(middleware.RequireRole(roleMinistryAdmin)).Post("/paths", h.career.Create)
+			})
+
+			// ── Reports (Phase 12: async report generation) ──────
+			r.Route("/reports", func(r chi.Router) {
+				r.With(middleware.RequireRole(roleMinistryAdmin, roleSchoolAdmin)).Post("/generate", h.reports.Generate)
+				r.With(middleware.RequireRole(roleMinistryAdmin, roleSchoolAdmin)).Get("/{id}", h.reports.Get)
 			})
 
 			// ── Notifications ─────────────────────────────────

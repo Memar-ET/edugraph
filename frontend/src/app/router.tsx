@@ -20,14 +20,16 @@ import {
 } from '@features/curriculum'
 import { ExplainPage, ModelGovernancePage } from '@features/modeling'
 import {
+  ExamAvailabilityPage,
   ExamQualityPage,
   ExamReviewPage,
   ExamUploadPage,
   GradeExamPage,
+  PreExamPage,
   StudentExamListPage,
   TakeExamPage,
 } from '@features/assessment'
-import { StudentDashboardPage, TutorPage } from '@features/student'
+import { StudentDashboardPage, StudentSkillStatePage, TutorPage } from '@features/student'
 import { MisconceptionReviewPage, TeacherDashboardPage } from '@features/teacher'
 import { SchoolAdminDashboardPage } from '@features/school-admin'
 import { RegionalDashboardPage } from '@features/regional'
@@ -256,6 +258,20 @@ const studentExamListRoute = createRoute({
   component: StudentExamListPage,
 })
 
+const examAvailabilityRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/student/exams/available',
+  beforeLoad: requireStudentAccess,
+  component: ExamAvailabilityPage,
+})
+
+const preExamRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/student/exams/$examId/pre',
+  beforeLoad: requireStudentAccess,
+  component: PreExamPage,
+})
+
 const takeExamRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/student/exams/$examId',
@@ -268,6 +284,13 @@ const tutorRoute = createRoute({
   path: '/student/tutor',
   beforeLoad: requireStudentAccess,
   component: TutorPage,
+})
+
+const studentSkillStateRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/students/me/skill-states',
+  beforeLoad: requireStudentAccess,
+  component: StudentSkillStatePage,
 })
 
 const careerPathsRoute = createRoute({
@@ -296,8 +319,11 @@ const routeTree = rootRoute.addChildren([
   examQualityRoute,
   misconceptionReviewRoute,
   studentExamListRoute,
+  examAvailabilityRoute,
+  preExamRoute,
   takeExamRoute,
   tutorRoute,
+  studentSkillStateRoute,
   careerPathsRoute,
 ])
 

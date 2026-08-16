@@ -25,6 +25,7 @@ import asyncio
 
 import structlog
 
+from app.db.dead_letter import push_dead_letter
 from app.db.postgres_gckt import fetch_learning_events_for_attempt
 from app.db.redis import GCKT_TRACE_QUEUE, brpop_job
 from app.services.gap_analysis import consistency, recovery, root_cause
@@ -109,8 +110,9 @@ async def run_forever(poll_timeout: int = 5) -> None:
 
         try:
             await process_knowledge_tracing_job(attempt_id)
-        except Exception:  # noqa: BLE001 -- a single bad job must not kill the worker
+        except Exception as exc:  # noqa: BLE001 -- a single bad job must not kill the worker
             logger.exception("kt_worker.unhandled_job_error", attempt_id=attempt_id)
+            await push_dead_letter(GCKT_TRACE_QUEUE, attempt_id, str(exc))
 
 
 def request_shutdown() -> None:

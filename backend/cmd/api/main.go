@@ -44,6 +44,10 @@ import (
 	notificationrepo "github.com/edugraph-ai/edugraph/internal/notification/repository"
 	notificationsvc "github.com/edugraph-ai/edugraph/internal/notification/service"
 
+	reportshandler "github.com/edugraph-ai/edugraph/internal/reports/handler"
+	reportsrepo "github.com/edugraph-ai/edugraph/internal/reports/repository"
+	reportssvc "github.com/edugraph-ai/edugraph/internal/reports/service"
+
 	regionhandler "github.com/edugraph-ai/edugraph/internal/region/handler"
 	regionrepo "github.com/edugraph-ai/edugraph/internal/region/repository"
 	regionsvc "github.com/edugraph-ai/edugraph/internal/region/service"
@@ -75,6 +79,7 @@ import (
 	"github.com/edugraph-ai/edugraph/pkg/database/postgres"
 	"github.com/edugraph-ai/edugraph/pkg/database/redis"
 	"github.com/edugraph-ai/edugraph/pkg/logger"
+	"github.com/edugraph-ai/edugraph/pkg/metrics"
 	"github.com/edugraph-ai/edugraph/pkg/telemetry"
 )
 
@@ -191,6 +196,18 @@ func main() {
 	// "nightly Celery batch job" -- Go ticker here, no Celery by design).
 	go qualityworker.Run(syncWorkerCtx, assessmentService, 24*time.Hour, log)
 
+	// Metrics: poll Redis queue depths every 30 s and expose a JSON
+	// /metrics endpoint on :9090 (internal — not the public load-balancer
+	// port). Prometheus can scrape this via a custom JSON exporter, or
+	// Grafana can query it directly via the JSON datasource plugin.
+	metrics.StartQueuePoller(syncWorkerCtx, redisClient)
+	go func() {
+		log.Info("metrics server starting", logger.String("addr", ":9090"))
+		if err := http.ListenAndServe(":9090", metrics.Handler()); err != nil && err != http.ErrServerClosed {
+			log.Error("metrics server error", logger.Error(err))
+		}
+	}()
+
 	careerRepository := careerrepo.New(pgPool, neo4jDriver)
 	careerService := careersvc.New(careerRepository, aiClient)
 	careerHandler := careerhandler.New(careerService)
@@ -216,6 +233,11 @@ func main() {
 	modelingService := modelingsvc.New(modelingRepository)
 	modelingHandler := modelinghandler.New(modelingService)
 
+	// Phase 12: async report generation (school_monthly, national_heatmap, clo_coverage).
+	reportsRepository := reportsrepo.New(pgPool)
+	reportsService := reportssvc.New(reportsRepository, redisClient)
+	reportsHandler := reportshandler.New(reportsService)
+
 	// Router
 	router := newRouter(cfg, log, authService, syncService, handlers{
 		auth:         authHandler,
@@ -232,6 +254,7 @@ func main() {
 		jobs:         jobsHandler,
 		storage:      storageHandler,
 		modeling:     modelingHandler,
+		reports:      reportsHandler,
 	})
 
 	srv := &http.Server{

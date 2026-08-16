@@ -1,6 +1,10 @@
 import { apiClient } from './client'
 import type {
+  AnswerInput,
+  AvailableExamsResponse,
+  ExamDraftResponse,
   NationalInsightsResponse,
+  SkillStatesResponse,
   UnderperformingResponse,
   AddPrerequisiteRequest,
   AddPrerequisiteResponse,
@@ -560,5 +564,30 @@ export async function getSkillStateSnapshots(studentId: string, topicId: string)
   const res = await apiClient.get<Envelope<SkillStateSnapshot[]>>(
     `/students/${studentId}/topics/${topicId}/state-snapshots`,
   )
+  return unwrap(res.data)
+}
+
+// ── Student skill states (EG-GCKT) ────────────────────────────────
+
+export async function getMySkillStates(): Promise<SkillStatesResponse> {
+  const res = await apiClient.get<Envelope<SkillStatesResponse>>('/students/me/skill-states')
+  return unwrap(res.data)
+}
+
+// ── Student available exams ────────────────────────────────────────
+
+export async function getAvailableExams(): Promise<AvailableExamsResponse> {
+  const res = await apiClient.get<Envelope<AvailableExamsResponse>>('/students/me/available-exams')
+  return unwrap(res.data)
+}
+
+// ── Exam autosave / draft restore ────────────────────────────────
+
+export async function autosaveExamAnswers(examId: string, answers: AnswerInput[]): Promise<void> {
+  await apiClient.post(`/exams/${examId}/autosave`, { answers })
+}
+
+export async function getExamDraft(examId: string): Promise<ExamDraftResponse> {
+  const res = await apiClient.get<Envelope<ExamDraftResponse>>(`/exams/${examId}/draft`)
   return unwrap(res.data)
 }

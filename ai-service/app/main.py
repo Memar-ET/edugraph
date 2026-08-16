@@ -18,6 +18,7 @@ from app.workers import (
     gap_worker,
     kt_worker,
     refit_worker,
+    report_worker,
     study_plan_worker,
 )
 
@@ -32,6 +33,7 @@ WORKERS = (
     embed_worker,
     kt_worker,
     refit_worker,
+    report_worker,
 )
 
 

@@ -51,6 +51,11 @@ EMBEDDING_QUEUE = "queue:embedding:generate"
 # destructive, so one consumer's pop would silently remove the job for the
 # other, starving whichever worker doesn't win the race.
 GCKT_TRACE_QUEUE = "queue:gckt:trace"
+# Phase 12: JSON payload ({"report_type": ..., "params": {...},
+# "report_id": "...", "requester_id": "..."}) pushed by Go when a
+# ministry_admin or school_admin requests a report -- consumed by
+# app/workers/report_worker.py.
+REPORT_QUEUE = "queue:report:generate"
 
 _client: Optional[redis.Redis] = None
 

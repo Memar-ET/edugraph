@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useNavigate } from '@tanstack/react-router'
 import {
@@ -87,6 +87,28 @@ export function TeacherDashboardPage() {
     subjectCode: 'PHY',
     gradeLevel: 11,
   })
+
+  // ExplainPage quick-jump: topic selected from heatmap + student ID input
+  const [selectedTopic, setSelectedTopic] = useState<{ id: string; title: string } | null>(null)
+  const [studentIdInput, setStudentIdInput] = useState('')
+  const studentIdRef = useRef<HTMLInputElement>(null)
+
+  const handleTopicClick = (topicId: string, topicTitle: string) => {
+    setSelectedTopic({ id: topicId, title: topicTitle })
+    setStudentIdInput('')
+    setTimeout(() => studentIdRef.current?.focus(), 50)
+  }
+
+  const openExplainPage = () => {
+    const sid = studentIdInput.trim()
+    if (!sid || !selectedTopic) return
+    void navigate({
+      to: '/students/$studentId/topics/$topicId/explain',
+      params: { studentId: sid, topicId: selectedTopic.id },
+    })
+    setSelectedTopic(null)
+    setStudentIdInput('')
+  }
 
   const { data, isLoading, isError, error } = useQuery({
     queryKey: queryKeys.classHeatmap(scope.subjectCode, scope.gradeLevel),
@@ -290,7 +312,35 @@ export function TeacherDashboardPage() {
                 )}
                 {isError && <Banner tone="error">{apiErrorMessage(error, 'Could not load heatmap.')}</Banner>}
                 {data && data.topics.length > 0 ? (
-                  <HeatmapGrid topics={data.topics} />
+                  <>
+                    <HeatmapGrid topics={data.topics} onTopicClick={handleTopicClick} />
+                    {selectedTopic && (
+                      <div className="mt-3 rounded-xl border border-indigo-100 bg-indigo-50 p-3 space-y-2">
+                        <p className="text-xs font-semibold text-indigo-800">
+                          View learner explanation for "{selectedTopic.title}"
+                        </p>
+                        <p className="text-[11px] text-indigo-600">
+                          Enter the student ID to open their EG-GCKT skill explanation.
+                        </p>
+                        <div className="flex gap-2">
+                          <input
+                            ref={studentIdRef}
+                            value={studentIdInput}
+                            onChange={(e) => setStudentIdInput(e.target.value)}
+                            onKeyDown={(e) => e.key === 'Enter' && openExplainPage()}
+                            placeholder="Student ID (UUID)…"
+                            className="flex-1 rounded-lg border border-indigo-200 bg-white px-2.5 py-1.5 text-xs outline-none focus:border-indigo-400"
+                          />
+                          <Button size="sm" onClick={openExplainPage} disabled={!studentIdInput.trim()}>
+                            Open
+                          </Button>
+                          <Button size="sm" variant="ghost" onClick={() => setSelectedTopic(null)}>
+                            ✕
+                          </Button>
+                        </div>
+                      </div>
+                    )}
+                  </>
                 ) : (
                   <EmptyState title="No gap data for selection" description="Publish an exam to generate class heatmap insights." />
                 )}

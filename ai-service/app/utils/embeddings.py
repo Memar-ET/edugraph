@@ -22,8 +22,15 @@ exercised, and tested end-to-end before a real model is chosen.
 from __future__ import annotations
 
 import hashlib
+import json
+import os
 import struct
 from abc import ABC, abstractmethod
+
+import httpx
+import structlog
+
+logger = structlog.get_logger()
 
 EMBEDDING_DIM = 768
 
@@ -50,11 +57,60 @@ class StubEmbeddingProvider(EmbeddingProvider):
         return [x / norm for x in vec]
 
 
+class OllamaEmbeddingProvider(EmbeddingProvider):
+    """768-dim embeddings via Ollama nomic-embed-text.
+
+    Falls back to StubEmbeddingProvider on any connection error so the
+    embed pipeline degrades gracefully when Ollama is offline, consistent
+    with the codebase's broader "degrade, don't crash" pattern (see
+    llm_provider.py's local/cloud fallback chain).
+    """
+
+    MODEL = "nomic-embed-text"
+    model_version = "ollama-nomic-embed-text-v1"
+
+    def __init__(self) -> None:
+        self._base_url = os.getenv("OLLAMA_HOST", "http://ollama:11434").rstrip("/")
+        self._fallback = StubEmbeddingProvider()
+
+    async def embed(self, text: str) -> list[float]:
+        try:
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                resp = await client.post(
+                    f"{self._base_url}/api/embeddings",
+                    content=json.dumps({"model": self.MODEL, "prompt": text}),
+                    headers={"Content-Type": "application/json"},
+                )
+                resp.raise_for_status()
+                data = resp.json()
+                vec: list[float] = data["embedding"]
+                if len(vec) != EMBEDDING_DIM:
+                    logger.warning(
+                        "ollama_embedding.dim_mismatch",
+                        expected=EMBEDDING_DIM,
+                        got=len(vec),
+                    )
+                return vec
+        except Exception:
+            logger.warning("ollama_embedding.unavailable_falling_back_to_stub")
+            return await self._fallback.embed(text)
+
+
 _provider: EmbeddingProvider | None = None
 
 
 def get_embedding_provider() -> EmbeddingProvider:
+    """Return the configured provider.
+
+    EMBEDDING_PROVIDER env var selects the implementation:
+      stub   – deterministic hash placeholder (default, not semantically meaningful)
+      ollama – Ollama nomic-embed-text via OLLAMA_HOST; falls back to stub on error
+    """
     global _provider
     if _provider is None:
-        _provider = StubEmbeddingProvider()
+        choice = os.getenv("EMBEDDING_PROVIDER", "stub").lower()
+        if choice == "ollama":
+            _provider = OllamaEmbeddingProvider()
+        else:
+            _provider = StubEmbeddingProvider()
     return _provider

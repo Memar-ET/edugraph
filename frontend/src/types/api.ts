@@ -497,6 +497,19 @@ export interface AnswerInput {
 
 export interface SubmitExamRequest {
   answers: AnswerInput[]
+  idempotencyKey?: string
+}
+
+export interface DraftAnswer {
+  questionId: string
+  response: string
+  savedAt: string
+}
+
+export interface ExamDraftResponse {
+  examId: string
+  answers: DraftAnswer[]
+  savedAt: string
 }
 
 export interface SubmitExamResponse {
@@ -959,4 +972,44 @@ export interface Explanation {
   confidence: string
   recommendation: string
   reason: string
+}
+
+// ── Student skill states (EG-GCKT, students.skill_states) ────────
+
+export interface SkillState {
+  topicId: string
+  topicTitle: string
+  subjectCode: string
+  gradeLevel: number
+  masteryProbability?: number
+  masteryStatus: string
+  uncertainty?: number
+  trend?: string
+  evidenceCount: number
+  forgettingRisk?: number
+  updatedAt: string
+}
+
+export interface SkillStatesResponse {
+  studentId: string
+  skillStates: SkillState[]
+}
+
+// ── Available exams for students ──────────────────────────────────
+
+export interface ExamAvailability {
+  examId: string
+  title: string
+  subjectCode: string
+  gradeLevel: number
+  examScope: ExamScope
+  totalMarks: number
+  questionCount: number
+  publishedAt: string
+  closesAt?: string
+  alreadyAttempted: boolean
+}
+
+export interface AvailableExamsResponse {
+  exams: ExamAvailability[]
 }

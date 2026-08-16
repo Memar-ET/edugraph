@@ -37,4 +37,7 @@ export const queryKeys = {
   explanation: (studentId: string, topicId: string) => ['students', studentId, 'topics', topicId, 'explain'] as const,
   skillStateSnapshots: (studentId: string, topicId: string) =>
     ['students', studentId, 'topics', topicId, 'state-snapshots'] as const,
+  mySkillStates: () => ['students', 'me', 'skill-states'] as const,
+  availableExams: () => ['students', 'me', 'available-exams'] as const,
+  examDraft: (examId: string) => ['assessment', 'exam', examId, 'draft'] as const,
 }

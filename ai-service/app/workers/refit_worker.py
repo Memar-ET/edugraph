@@ -40,8 +40,10 @@ from typing import Optional
 import structlog
 
 from app.db import postgres_studyplan as studyplan_db
+from app.db.dead_letter import requeue_retriable_jobs
 from app.db.postgres import get_pool
 from app.db.postgres_gckt import insert_model_snapshot
+from app.db.redis import get_redis
 from app.services.knowledge_tracing.snapshot import take_all_snapshots
 
 logger = structlog.get_logger()
@@ -442,6 +444,8 @@ async def run_once() -> None:
     # generation's repetition penalty.
     outcomes_evaluated = await evaluate_recommendation_outcomes()
 
+    dead_letter_requeued = await requeue_retriable_jobs(get_redis())
+
     logger.info(
         "refit_worker.completed",
         bkt_candidates=bkt_written,
@@ -449,6 +453,7 @@ async def run_once() -> None:
         irt_candidates=irt_written,
         snapshots_written=snapshots_written,
         outcomes_evaluated=outcomes_evaluated,
+        dead_letter_requeued=dead_letter_requeued,
     )
 
 
