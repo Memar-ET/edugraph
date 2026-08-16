@@ -300,6 +300,46 @@ services:
     profiles: ["monitoring"]
 
 
+  # ─────────────────────────────
+  # School Box Sync Agent
+  # Runs on the local School Box device (Raspberry Pi / mini-PC).
+  # Start with: docker compose --profile school-box up -d sync-agent
+  # Requires a separate .env.school-box (see .env.school-box.example).
+  # The local Postgres container (profiles: local-db) must already be running
+  # and migrated before this service starts.
+  # ─────────────────────────────
+  sync-agent:
+    build:
+      context: ./backend
+      dockerfile: cmd/sync-agent/Dockerfile
+    profiles: ["school-box"]
+
+    env_file:
+      - .env.school-box
+
+    environment:
+      # CLOUD_API_URL, DEVICE_ID, DEVICE_SECRET, SCHOOL_ID,
+      # LOCAL_POSTGRES_DSN or POSTGRES_* components —
+      # all come from .env.school-box (see .env.school-box.example).
+      SYNC_INTERVAL_SECONDS: ${SYNC_INTERVAL_SECONDS:-60}
+      HEALTH_ADDR: ":8081"
+
+    ports:
+      - "8082:8081"   # expose on 8082 to avoid clashing with cloud api:8080
+
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8081/health | grep -q status"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+    restart: unless-stopped
+
+
 # ─────────────────────────────
 # Volumes
 # ─────────────────────────────
