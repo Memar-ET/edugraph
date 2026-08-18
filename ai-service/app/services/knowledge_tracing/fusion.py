@@ -99,7 +99,10 @@ def _recency_weight(created_at: datetime) -> float:
 
 
 def _source_weight(provenance: str, reliability: Optional[float], sample_size: Optional[int], created_at: datetime) -> float:
-    base = reliability if reliability is not None else DEFAULT_SOURCE_RELIABILITY.get(provenance, FALLBACK_RELIABILITY)
+    # reliability comes straight off modeling.evidence_log's NUMERIC column,
+    # so asyncpg hands back a decimal.Decimal here -- float() it before
+    # mixing with the plain floats below (Decimal * float raises TypeError).
+    base = float(reliability) if reliability is not None else DEFAULT_SOURCE_RELIABILITY.get(provenance, FALLBACK_RELIABILITY)
     sample_factor = min(1.0, (sample_size or 1) / MIN_SAMPLE_FOR_FULL_WEIGHT)
     return base * sample_factor * _recency_weight(created_at)
 

@@ -57,7 +57,14 @@ GEMINI_TIMEOUT_SECONDS = 30.0
 # synthesis can genuinely take tens of seconds on modest School Box
 # hardware, so this tier gets a longer budget than the cloud call rather
 # than risking false negatives on a box that's just slow, not down.
-OLLAMA_TIMEOUT_SECONDS = 90.0
+# Raised from 90s -> 150s after real tutor calls (a much longer,
+# context-injected prompt than gap-analysis's shorter synthesis calls)
+# measured taking >90s on CPU under realistic concurrent load (embedding
+# backfill + several knowledge-tracing workers running at once) --
+# pkg/ai/ai.go's client timeout must stay above this + GEMINI_TIMEOUT_SECONDS
+# (the worst-case sequential local-then-fallback budget) or Go abandons
+# the request while ai-service is still legitimately working.
+OLLAMA_TIMEOUT_SECONDS = 150.0
 
 
 class LLMProvider(ABC):

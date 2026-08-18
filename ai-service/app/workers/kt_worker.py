@@ -25,6 +25,7 @@ import asyncio
 
 import structlog
 
+from app.core.config import settings
 from app.db.dead_letter import push_dead_letter
 from app.db.postgres_gckt import fetch_learning_events_for_attempt
 from app.db.redis import GCKT_TRACE_QUEUE, brpop_job
@@ -95,24 +96,33 @@ async def process_knowledge_tracing_job(attempt_id: str) -> None:
     )
 
 
-async def run_forever(poll_timeout: int = 5) -> None:
-    logger.info("kt_worker.started", queue=GCKT_TRACE_QUEUE)
+async def _consume_one(poll_timeout: int) -> None:
+    try:
+        attempt_id = await brpop_job(GCKT_TRACE_QUEUE, timeout=poll_timeout)
+    except Exception:  # noqa: BLE001 -- keep the loop alive on transient Redis errors
+        logger.exception("kt_worker.redis_error")
+        await asyncio.sleep(poll_timeout)
+        return
+
+    if attempt_id is None:
+        return  # BRPOP timed out with nothing queued -- loop and check shutdown
+
+    try:
+        await process_knowledge_tracing_job(attempt_id)
+    except Exception as exc:  # noqa: BLE001 -- a single bad job must not kill the worker
+        logger.exception("kt_worker.unhandled_job_error", attempt_id=attempt_id)
+        await push_dead_letter(GCKT_TRACE_QUEUE, attempt_id, str(exc))
+
+
+async def _consumer_loop(poll_timeout: int) -> None:
     while not _shutdown.is_set():
-        try:
-            attempt_id = await brpop_job(GCKT_TRACE_QUEUE, timeout=poll_timeout)
-        except Exception:  # noqa: BLE001 -- keep the loop alive on transient Redis errors
-            logger.exception("kt_worker.redis_error")
-            await asyncio.sleep(poll_timeout)
-            continue
+        await _consume_one(poll_timeout)
 
-        if attempt_id is None:
-            continue  # BRPOP timed out with nothing queued -- loop and check shutdown
 
-        try:
-            await process_knowledge_tracing_job(attempt_id)
-        except Exception as exc:  # noqa: BLE001 -- a single bad job must not kill the worker
-            logger.exception("kt_worker.unhandled_job_error", attempt_id=attempt_id)
-            await push_dead_letter(GCKT_TRACE_QUEUE, attempt_id, str(exc))
+async def run_forever(poll_timeout: int = 5) -> None:
+    concurrency = max(1, settings.KT_WORKER_CONCURRENCY)
+    logger.info("kt_worker.started", queue=GCKT_TRACE_QUEUE, concurrency=concurrency)
+    await asyncio.gather(*(_consumer_loop(poll_timeout) for _ in range(concurrency)))
 
 
 def request_shutdown() -> None:
