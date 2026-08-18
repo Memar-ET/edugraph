@@ -54,6 +54,7 @@ type handlers struct {
 }
 
 func newRouter(cfg config.Config, log *zap.Logger, verifier middleware.TokenVerifier, deviceVerifier synchandler.DeviceVerifier, h handlers) http.Handler {
+	middleware.SetLogger(log)
 	r := chi.NewRouter()
 
 	// Outermost middleware — applied to every path including /health.
@@ -153,6 +154,18 @@ func newRouter(cfg config.Config, log *zap.Logger, verifier middleware.TokenVeri
 				r.With(middleware.RequireRole(roleStudent)).Post("/me/study-plans", h.assessment.GenerateStudyPlan)
 				r.With(middleware.RequireRole(roleStudent)).Get("/me/study-plans", h.assessment.ListMyStudyPlans)
 
+				// EG-GCKT skill-map view: every topic the caller has any
+				// fused evidence for. Resolves the caller's own students.id
+				// server-side (Service.MySkillStates) -- never existed as a
+				// route before, so the frontend's skill-map page 404'd.
+				r.With(middleware.RequireRole(roleStudent)).Get("/me/skill-states", h.modeling.GetMySkillStates)
+
+				// Exam-taking entry point: every published exam matching
+				// the caller's own school/grade -- never existed as a
+				// route before, so StudentExamListPage/available-exams
+				// 404'd for every student.
+				r.With(middleware.RequireRole(roleStudent)).Get("/me/available-exams", h.assessment.GetAvailableExams)
+
 				// EG-GCKT Milestone 11: five-part explanation (spec section
 				// 18). {id} is caller-supplied -- Service.authorizeExplain
 				// enforces ownership server-side (own record for a student,
@@ -164,6 +177,12 @@ func newRouter(cfg config.Config, log *zap.Logger, verifier middleware.TokenVeri
 				// snapshots for comparison over time. Same authorization as
 				// Explain.
 				r.Get("/{id}/topics/{topicId}/state-snapshots", h.modeling.ListSkillStateSnapshots)
+				// Teacher-facing counterpart to /me/skill-states -- backs
+				// TeacherStudentDetailPage, which previously called
+				// /me/skill-states (the caller's own state, not the
+				// viewed student's) and failed for every teacher. Same
+				// authorization as Explain.
+				r.Get("/{id}/skill-states", h.modeling.GetStudentSkillStates)
 			})
 
 			// ── Teachers ──────────────────────────────────────
@@ -221,8 +240,12 @@ func newRouter(cfg config.Config, log *zap.Logger, verifier middleware.TokenVeri
 				// Flat topic list for the prerequisites UI's topic picker --
 				// no general "browse the curriculum" endpoint exists.
 				r.Get("/subjects/{code}/topics", h.curriculum.ListTopicsBySubject)
-				// Ministry curriculum browser: every promoted subject system-wide.
-				r.With(middleware.RequireRole(roleMinistryAdmin, roleCurriculumOfficer)).Get("/subjects", h.curriculum.ListSubjects)
+				// Ministry curriculum browser, but also the data source for
+				// the teacher-facing CurriculumCoveragePage (frontend
+				// /teacher/curriculum-coverage, reachable by teacher and
+				// school_admin per canAccessTeacherDashboard) -- both need
+				// the subject list to pick a subject to check coverage for.
+				r.With(middleware.RequireRole(roleMinistryAdmin, roleCurriculumOfficer, roleTeacher, roleSchoolAdmin)).Get("/subjects", h.curriculum.ListSubjects)
 				// Neo4j knowledge-graph subtree for a subject -- backs the
 				// frontend graph visualization.
 				r.Get("/subjects/{code}/graph", h.curriculum.GetSubjectGraph)
@@ -236,14 +259,32 @@ func newRouter(cfg config.Config, log *zap.Logger, verifier middleware.TokenVeri
 
 			// ── Exams (Capability 2A: upload + AI parsing; 2B: AI validation report; 2C: submission) ──
 			r.Route("/exams", func(r chi.Router) {
+				// School-scoped list (Repository.ListExamsBySchool) --
+				// TeacherExamListPage/ClassAnalyticsPage/QuestionBankPage/
+				// TeacherDashboardPage all call this; it never existed as
+				// a route before, so every one of those pages 404'd.
+				r.With(middleware.RequireRole(roleTeacher, roleSchoolAdmin)).Get("/", h.assessment.ListExams)
 				r.With(middleware.RequireRole(roleTeacher, roleSchoolAdmin)).Post("/upload", h.assessment.UploadExam)
-				r.With(middleware.RequireRole(roleTeacher, roleSchoolAdmin)).Get("/{id}", h.assessment.GetExam)
+				// Student path (PreExamPage, the exam instructions/
+				// confirmation screen) needs this too -- see
+				// Service.GetExam's doc comment for the two different
+				// authorization rules this now enforces per caller.
+				// Teacher-only until this fix, which 403'd every student.
+				r.With(middleware.RequireRole(roleTeacher, roleSchoolAdmin, roleStudent)).Get("/{id}", h.assessment.GetExam)
 				r.With(middleware.RequireRole(roleTeacher, roleSchoolAdmin)).Post("/{id}/validate", h.assessment.ValidateExam)
 				// Capability 2D: fix a wrong subject/grade/exam-type/unit-range
 				// without re-uploading the file, then re-run /validate.
 				r.With(middleware.RequireRole(roleTeacher, roleSchoolAdmin)).Patch("/{id}/scope", h.assessment.UpdateExamScope)
 				r.With(middleware.RequireRole(roleTeacher, roleSchoolAdmin)).Post("/{id}/publish", h.assessment.PublishExam)
 				r.With(middleware.RequireRole(roleTeacher, roleSchoolAdmin)).Post("/{id}/close", h.assessment.CloseExam)
+				// Production-hardening pass: creates (or resumes, if one is
+				// already in_progress) the student's exam session --
+				// server-authoritative timer/randomization/resume all
+				// anchor off the attempt this creates. Idempotent while an
+				// attempt is in_progress. Must run before /questions,
+				// /autosave, /submit, all of which now require it to
+				// already exist.
+				r.With(middleware.RequireRole(roleStudent)).Post("/{id}/start", h.assessment.StartAttempt)
 				r.With(middleware.RequireRole(roleStudent)).Post("/{id}/autosave", h.assessment.AutosaveExamDraft)
 				r.With(middleware.RequireRole(roleStudent)).Get("/{id}/draft", h.assessment.GetExamDraft)
 				r.With(middleware.RequireRole(roleTeacher, roleSchoolAdmin)).Post("/{id}/answer-key", h.assessment.UploadAnswerKey)
@@ -258,6 +299,11 @@ func newRouter(cfg config.Config, log *zap.Logger, verifier middleware.TokenVeri
 				// Capability 4B: retroactive exam quality report
 				// (discrimination, calibration, time anomalies, CLO coverage).
 				r.With(middleware.RequireRole(roleTeacher, roleSchoolAdmin)).Get("/{id}/quality", h.assessment.GetExamQuality)
+				// Exam-integrity signals (tab visibility, fullscreen,
+				// connection status) -- students report, teachers read an
+				// aggregate summary. Never framed as proof of misconduct.
+				r.With(middleware.RequireRole(roleStudent)).Post("/{id}/attempts/current/events", h.assessment.ReportIntegrityEvents)
+				r.With(middleware.RequireRole(roleTeacher, roleSchoolAdmin)).Get("/{id}/integrity", h.assessment.GetExamIntegritySummary)
 				// Capability 2.2: "Mode B" print-ready exam sheet + optical
 				// answer key (PDF via the browser's own print-to-PDF, see
 				// exam_print_templates.go). Both teacher/school_admin only --
@@ -306,9 +352,18 @@ func newRouter(cfg config.Config, log *zap.Logger, verifier middleware.TokenVeri
 			})
 
 			// ── Reports (Phase 12: async report generation) ──────
+			// TeacherReportsPage, SchoolReportsPage, RegionalReportsPage,
+			// MinistryReportsPage, and MinistryDataExportsPage all call
+			// generate/list/get -- the role gate below was originally
+			// scoped to only ministry_admin/school_admin, which 403'd the
+			// teacher and regional_admin pages entirely.
 			r.Route("/reports", func(r chi.Router) {
-				r.With(middleware.RequireRole(roleMinistryAdmin, roleSchoolAdmin)).Post("/generate", h.reports.Generate)
-				r.With(middleware.RequireRole(roleMinistryAdmin, roleSchoolAdmin)).Get("/{id}", h.reports.Get)
+				r.With(middleware.RequireRole(roleMinistryAdmin, roleSchoolAdmin, roleTeacher, roleRegionalAdmin)).Post("/generate", h.reports.Generate)
+				// List is scoped server-side to the caller's own requested
+				// reports (Repository.ListByRequester); role gate kept
+				// aligned with generate/get for consistency.
+				r.With(middleware.RequireRole(roleMinistryAdmin, roleSchoolAdmin, roleTeacher, roleRegionalAdmin)).Get("/", h.reports.List)
+				r.With(middleware.RequireRole(roleMinistryAdmin, roleSchoolAdmin, roleTeacher, roleRegionalAdmin)).Get("/{id}", h.reports.Get)
 			})
 
 			// ── Notifications ─────────────────────────────────

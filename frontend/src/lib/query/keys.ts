@@ -13,6 +13,7 @@ export const queryKeys = {
   examQuestions: (examId: string) => ['assessment', 'exam', examId, 'questions'] as const,
   gradingQuestions: (examId: string) => ['assessment', 'exam', examId, 'grading-questions'] as const,
   examQuality: (examId: string) => ['assessment', 'exam', examId, 'quality'] as const,
+  examIntegrity: (examId: string) => ['assessment', 'exam', examId, 'integrity'] as const,
   examInsights: (examId: string) => ['assessment', 'exam', examId, 'insights'] as const,
   myExamInsight: (examId: string) => ['assessment', 'exam', examId, 'my-insight'] as const,
   students: (schoolId: string) => ['students', schoolId] as const,
@@ -38,6 +39,14 @@ export const queryKeys = {
   skillStateSnapshots: (studentId: string, topicId: string) =>
     ['students', studentId, 'topics', topicId, 'state-snapshots'] as const,
   mySkillStates: () => ['students', 'me', 'skill-states'] as const,
+  studentSkillStates: (studentId: string) => ['students', studentId, 'skill-states'] as const,
   availableExams: () => ['students', 'me', 'available-exams'] as const,
   examDraft: (examId: string) => ['assessment', 'exam', examId, 'draft'] as const,
+  exams: (schoolId?: string) => ['assessment', 'exams', { schoolId }] as const,
+  allStudents: (filters?: Record<string, unknown>) => ['students', 'all', filters ?? {}] as const,
+  allTeachers: (filters?: Record<string, unknown>) => ['teachers', 'all', filters ?? {}] as const,
+  qmatrixQuality: (subjectCode: string) => ['curriculum', 'subjects', subjectCode, 'qmatrix-quality'] as const,
+  prerequisiteQuality: (subjectCode: string) => ['curriculum', 'subjects', subjectCode, 'prerequisite-quality'] as const,
+  reports: () => ['reports'] as const,
+  report: (reportId: string) => ['reports', reportId] as const,
 }

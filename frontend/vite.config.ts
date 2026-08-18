@@ -26,6 +26,12 @@ export default defineConfig({
   server: {
     port: 5173,
     host: true,
+    // Enable polling when running inside Docker on Windows: NTFS bind-mounts
+    // don't propagate inotify events to the Linux container, so HMR only fires
+    // if Vite polls the filesystem. CHOKIDAR_USEPOLLING is set by docker-compose.
+    watch: process.env.CHOKIDAR_USEPOLLING === 'true'
+      ? { usePolling: true, interval: 500 }
+      : {},
     proxy: {
       '/api': {
         target: apiProxyTarget,

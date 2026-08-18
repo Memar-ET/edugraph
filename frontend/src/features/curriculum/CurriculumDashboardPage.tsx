@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useNavigate } from '@tanstack/react-router'
 import {
@@ -15,7 +15,6 @@ import { AppShell } from '@components/layout'
 import {
   DistributionDonutChart,
   ManagementTableCard,
-  PerformanceAreaChart,
   ScheduleCalendarWidget,
   StatMetricCard,
 } from '@components/dashboard'
@@ -52,44 +51,6 @@ function formatDate(iso: string | undefined): string {
   return new Date(iso).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })
 }
 
-const MOCK_CURRICULUM_PERFORMANCE = [
-  { label: 'Jan', value: 12 },
-  { label: 'Feb', value: 18 },
-  { label: 'Mar', value: 24 },
-  { label: 'Apr', value: 38 },
-  { label: 'May', value: 45 },
-  { label: 'June', value: 54 },
-]
-
-const MOCK_CURRICULUM_DONUT = [
-  { name: 'Approved', value: 72, color: '#2d2d2e' },
-  { name: 'Under Review', value: 18, color: '#6b7280' },
-  { name: 'Parsing/Pending', value: 10, color: '#e5e7eb' },
-]
-
-const MOCK_CURRICULUM_SCHEDULE = [
-  {
-    id: 'cs1',
-    title: 'Grade 11 Physics Review',
-    time: '10 AM - 12 PM',
-    subtitle: 'Officer: Abebe Demissie',
-    category: 'schedule' as const,
-  },
-  {
-    id: 'cs2',
-    title: 'Chemistry Syllabus Versioning',
-    time: '02 PM (Today)',
-    subtitle: 'Supersede Code V2',
-    category: 'upcoming' as const,
-  },
-  {
-    id: 'cs3',
-    title: 'Math AST Verification',
-    time: '11 AM (Tomorrow)',
-    subtitle: 'CLO Vector Embeddings',
-    category: 'upcoming' as const,
-  },
-]
 
 interface JobTableRow {
   id: string
@@ -113,6 +74,36 @@ export function CurriculumDashboardPage() {
 
   const totalPages = data ? Math.max(1, Math.ceil(data.meta.total / data.meta.limit)) : 1
 
+  // Derived chart data from real jobs
+  const donutSegments = useMemo(() => {
+    const items = data?.items ?? []
+    const approved = items.filter((j) => j.status === 'approved').length
+    const review = items.filter((j) => j.status === 'review' || j.status === 'parsed').length
+    const pending = items.filter((j) => j.status === 'pending' || j.status === 'parsing' || j.status === 'failed').length
+    return [
+      { name: 'Approved', value: approved, color: '#2d2d2e' },
+      { name: 'Under Review', value: review, color: '#6b7280' },
+      { name: 'Parsing/Pending', value: pending, color: '#e5e7eb' },
+    ].filter((s) => s.value > 0)
+  }, [data])
+
+  const scheduleItems = useMemo(() => {
+    const items = data?.items ?? []
+    return items
+      .filter((j) => j.status === 'review' || j.status === 'parsed')
+      .slice(0, 3)
+      .map((j) => ({
+        id: j.jobId,
+        title: `${j.subjectCode} Grade ${j.gradeLevel} Review`,
+        time: new Date(j.createdAt).toLocaleDateString(),
+        subtitle: j.fileName ?? j.subjectCode,
+        category: 'upcoming' as const,
+      }))
+  }, [data])
+
+  const approvedCount = useMemo(() => data?.items.filter((j) => j.status === 'approved').length ?? 0, [data])
+  const reviewCount = useMemo(() => data?.items.filter((j) => j.status === 'review' || j.status === 'parsed').length ?? 0, [data])
+
   const tableData: JobTableRow[] = data?.items.map((job) => ({
     id: job.jobId,
     fileName: job.fileName,
@@ -122,36 +113,7 @@ export function CurriculumDashboardPage() {
     status: job.status,
     createdAt: job.createdAt,
     approvedAt: job.approvedAt,
-  })) ?? [
-    {
-      id: 'job-101',
-      fileName: 'Ethiopian_Physics_Grade11_Syllabus.pdf',
-      subjectCode: 'PHY',
-      gradeLevel: 11,
-      academicYear: '2026',
-      status: 'approved',
-      createdAt: '2026-08-01T10:00:00Z',
-      approvedAt: '2026-08-02T14:30:00Z',
-    },
-    {
-      id: 'job-102',
-      fileName: 'Chemistry_Curriculum_Grade11_Draft.docx',
-      subjectCode: 'CHEM',
-      gradeLevel: 11,
-      academicYear: '2026',
-      status: 'review',
-      createdAt: '2026-08-05T09:15:00Z',
-    },
-    {
-      id: 'job-103',
-      fileName: 'Mathematics_Calculus_Spec.pdf',
-      subjectCode: 'MATH',
-      gradeLevel: 12,
-      academicYear: '2026',
-      status: 'parsed',
-      createdAt: '2026-08-08T11:00:00Z',
-    },
-  ]
+  })) ?? []
 
   const tableColumns = [
     {
@@ -251,26 +213,26 @@ export function CurriculumDashboardPage() {
           />
           <StatMetricCard
             title="Pending Review"
-            value="8 Jobs"
-            change="Requirements"
-            trend="down"
-            periodText="Action Needed"
+            value={reviewCount > 0 ? `${reviewCount} Jobs` : 'None'}
+            change={reviewCount > 0 ? 'Action Needed' : 'Up to Date'}
+            trend={reviewCount > 0 ? 'down' : 'up'}
+            periodText="Awaiting Review"
             icon={Clock}
           />
           <StatMetricCard
-            title="Promoted Subjects"
-            value="36 Subjects"
-            change="94.2%"
+            title="Approved This Page"
+            value={`${approvedCount} Jobs`}
+            change="Graph Synced"
             trend="up"
-            periodText="Graph Synced"
+            periodText="Promoted to Graph"
             icon={CheckCircle2}
           />
           <StatMetricCard
-            title="AI Extraction Rate"
-            value="98.6%"
-            change="2.4%"
+            title="Total Jobs"
+            value={data ? `${data.meta.total}` : '—'}
+            change="All Time"
             trend="up"
-            periodText="AST Accuracy"
+            periodText="Uploaded"
             icon={UploadCloud}
           />
         </div>
@@ -278,28 +240,38 @@ export function CurriculumDashboardPage() {
         {/* Charts & Schedule Asymmetric Grid */}
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-12">
           <div className="lg:col-span-5">
-            <PerformanceAreaChart
-              title="Curriculum Processing Volume"
-              subtitle="Monthly Parse & Promotion Throughput"
-              data={MOCK_CURRICULUM_PERFORMANCE}
-            />
+            <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm h-full">
+              <h3 className="font-bold text-sm text-slate-900">Curriculum Pipeline Summary</h3>
+              <p className="text-xs text-slate-500 mt-0.5">Current page job breakdown</p>
+              <div className="mt-4 grid grid-cols-2 gap-3">
+                {(['approved','review','parsed','pending','parsing','failed'] as const).map((s) => {
+                  const count = data?.items.filter((j) => j.status === s).length ?? 0
+                  return (
+                    <div key={s} className="rounded-xl bg-slate-50 p-3 border border-slate-100">
+                      <p className="text-xs text-slate-500 capitalize">{STATUS_LABEL[s]}</p>
+                      <p className="text-xl font-bold text-slate-900 mt-0.5">{count}</p>
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
           </div>
 
           <div className="lg:col-span-4">
             <DistributionDonutChart
               title="Pipeline Approval Status"
-              centerPercentage="72%"
+              centerPercentage={data ? `${approvedCount}/${data.items.length}` : '—'}
               centerLabel="Approved"
-              totalValue="54 Total Specs"
-              segments={MOCK_CURRICULUM_DONUT}
+              totalValue={data ? `${data.items.length} This Page` : 'Loading…'}
+              segments={donutSegments}
               dateLabel="Active Cycle"
             />
           </div>
 
           <div className="lg:col-span-3">
             <ScheduleCalendarWidget
-              monthLabel="April 2026"
-              scheduleItems={MOCK_CURRICULUM_SCHEDULE}
+              monthLabel={new Date().toLocaleDateString(undefined, { month: 'long', year: 'numeric' })}
+              scheduleItems={scheduleItems}
               onAddNew={() => void navigate({ to: '/curriculum/upload' })}
             />
           </div>

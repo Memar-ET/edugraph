@@ -122,13 +122,25 @@ async def insert_evidence(
     context: Optional[dict[str, Any]] = None,
     model_snapshot_id: Optional[str] = None,
     source_event_id: Optional[str] = None,
-) -> str:
+) -> Optional[str]:
     """Appends one Evidence = {estimate, uncertainty, recency, sample_size,
     reliability, provenance, context, model_version} object (spec section
     8.1) to modeling.evidence_log. Append-only -- never updated after
     insert. `recency` isn't a parameter here: it's the row's own
     created_at/default now(), which IS the recency timestamp fusion
-    (Milestone 4) reads."""
+    (Milestone 4) reads.
+
+    ON CONFLICT DO NOTHING on (source_event_id, provenance) (V058) is
+    what makes a dead-lettered/requeued knowledge-tracing job idempotent:
+    without it, re-processing the same attempt_id (bkt/dina/irt always
+    pass source_event_id = the originating learning_events.id, stable
+    across re-processing) inserted duplicate evidence rows, which fusion
+    then double-folded into skill_states -- inflating evidence_count/
+    sample_size and artificially sharpening uncertainty. Returns None
+    when the insert was skipped as a duplicate; no caller currently uses
+    the return value, so this is a safe default rather than raising.
+    graph_reasoning evidence (no source_event_id) is unaffected -- the
+    unique index only covers source_event_id IS NOT NULL rows."""
     pool = await get_pool()
     row = await pool.fetchrow(
         """
@@ -136,6 +148,8 @@ async def insert_evidence(
             (student_id, topic_id, source_event_id, estimate, uncertainty, sample_size,
              reliability, provenance, context, model_snapshot_id)
         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb, $10)
+        ON CONFLICT (source_event_id, provenance) WHERE source_event_id IS NOT NULL
+        DO NOTHING
         RETURNING id
         """,
         student_id,
@@ -149,7 +163,7 @@ async def insert_evidence(
         json.dumps(context) if context is not None else None,
         model_snapshot_id,
     )
-    return str(row["id"])
+    return str(row["id"]) if row is not None else None
 
 
 async def fetch_unconsumed_evidence(student_id: str, topic_id: str) -> list[asyncpg.Record]:

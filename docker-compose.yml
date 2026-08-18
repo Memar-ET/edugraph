@@ -19,23 +19,32 @@ services:
       - .env
 
     environment:
-      APP_ENV: ${APP_ENV}
+      APP_ENV: development
 
-      # Postgres now lives on Supabase (session pooler), not the local
-      # `postgres` container below -- see .env / CLAUDE.md. No depends_on
-      # entry for it: it's a remote service Docker can't health-check or
-      # start, and connection failures surface at request time same as any
-      # other external dependency.
+      # Postgres lives on Supabase (session pooler) -- see .env / CLAUDE.md.
       POSTGRES_HOST: ${POSTGRES_HOST}
       POSTGRES_PORT: ${POSTGRES_PORT}
       POSTGRES_DB: ${POSTGRES_DB}
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       POSTGRES_SSLMODE: ${POSTGRES_SSLMODE}
+      POSTGRES_MAX_CONNS: ${POSTGRES_MAX_CONNS:-15}
 
-      NEO4J_URI: ${NEO4J_URI}
-      REDIS_URL: ${REDIS_URL}
-      AI_SERVICE_URL: ${AI_SERVICE_URL}
+      # Inter-service: use Docker DNS names, NOT the localhost values from
+      # .env (which are for running services directly on the host, not inside
+      # the Docker network where each service name is its hostname).
+      NEO4J_URI: bolt://neo4j:7687
+      REDIS_URL: redis://redis:6379
+      AI_SERVICE_URL: http://ai-service:8000
+
+      # JWT keypair (auto-generated in APP_ENV=development)
+      JWT_PRIVATE_KEY_PATH: ${JWT_PRIVATE_KEY_PATH:-/tmp/jwt_private.pem}
+      JWT_PUBLIC_KEY_PATH: ${JWT_PUBLIC_KEY_PATH:-/tmp/jwt_public.pem}
+      JWT_ACCESS_TTL_MINUTES: ${JWT_ACCESS_TTL_MINUTES:-15}
+      JWT_REFRESH_TTL_DAYS: ${JWT_REFRESH_TTL_DAYS:-7}
+
+      LOG_LEVEL: ${LOG_LEVEL:-debug}
+      PORT: 8080
 
     depends_on:
       neo4j:
@@ -63,16 +72,23 @@ services:
       - .env
 
     environment:
-      NEO4J_URI: ${NEO4J_URI}
-      REDIS_URL: ${REDIS_URL}
+      # Inter-service: Docker DNS names
+      NEO4J_URI: bolt://neo4j:7687
+      REDIS_URL: redis://redis:6379
+
       POSTGRES_HOST: ${POSTGRES_HOST}
       POSTGRES_PORT: ${POSTGRES_PORT}
       POSTGRES_DB: ${POSTGRES_DB}
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       POSTGRES_SSLMODE: ${POSTGRES_SSLMODE}
-      EMBEDDING_MODEL: ${EMBEDDING_MODEL}
-      GEMINI_API_KEY: ${GEMINI_API_KEY}
+
+      LLM_PROVIDER: ${LLM_PROVIDER:-local}
+      OLLAMA_HOST: http://ollama:11434
+      OLLAMA_MODEL: ${OLLAMA_MODEL:-qwen2.5:7b-instruct-q4_K_M}
+      EMBEDDING_MODEL: ${EMBEDDING_MODEL:-intfloat/multilingual-e5-large}
+      EMBEDDING_PROVIDER: ${EMBEDDING_PROVIDER:-sentence_transformers}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
 
     depends_on:
       neo4j:
@@ -84,7 +100,8 @@ services:
 
 
   # ─────────────────────────────
-  # Frontend (React / Vite)
+  # Frontend (React / Vite dev server)
+  # Open http://localhost:5173 in your browser.
   # ─────────────────────────────
   frontend:
     build:
@@ -96,31 +113,38 @@ services:
 
     volumes:
       - ./frontend:/app
+      # Keep the image's node_modules intact — the host directory doesn't have
+      # them, and on Windows the bind-mount would shadow them with an empty dir.
       - /app/node_modules
 
     environment:
-      # Frontend code calls relative /api/v1/* paths; the Vite dev-server
-      # proxy (vite.config.ts) forwards them to the Go api container. This
-      # was previously (incorrectly) pointed at AI_SERVICE_URL, which would
-      # have sent every backend call to the Python service instead of Go.
+      # The Vite dev-server proxy forwards /api/* to the Go API container.
       API_PROXY_TARGET: http://api:8080
+
+      # Enable filesystem polling for hot-module-replacement on Windows Docker
+      # Desktop (NTFS → Linux container doesn't support inotify over bind mounts).
+      CHOKIDAR_USEPOLLING: "true"
+      CHOKIDAR_INTERVAL: "500"
+
+    depends_on:
+      - api
 
     restart: unless-stopped
 
 
   # ─────────────────────────────
-  # PostgreSQL + pgvector -- LOCAL FALLBACK ONLY, not started by default.
-  # Postgres normally lives on Supabase now (see .env). Opt in with
-  # `docker compose --profile local-db up -d postgres flyway` if you need
-  # to develop against a plain local Postgres instead (e.g. offline), and
-  # point POSTGRES_HOST=postgres / POSTGRES_SSLMODE=disable in .env to use it.
+  # PostgreSQL + pgvector -- LOCAL FALLBACK ONLY (profiles: local-db).
+  # Postgres normally lives on Supabase. Opt in with:
+  #   docker compose --profile local-db up -d postgres flyway
+  # then set POSTGRES_HOST=postgres, POSTGRES_USER=edugraph,
+  # POSTGRES_SSLMODE=disable in .env.
   # ─────────────────────────────
   postgres:
     image: pgvector/pgvector:pg16
     profiles: ["local-db"]
 
     ports:
-      - "${POSTGRES_PORT}:5432"
+      - "${POSTGRES_PORT:-5432}:5432"
 
     environment:
       POSTGRES_DB: edugraph
@@ -130,7 +154,6 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
 
-
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U edugraph -d edugraph"]
       interval: 10s
@@ -138,6 +161,7 @@ services:
       retries: 5
 
     restart: unless-stopped
+
 
   flyway:
     image: flyway/flyway:10
@@ -157,10 +181,12 @@ services:
       FLYWAY_LOCATIONS: filesystem:/flyway/sql
 
     command: migrate
-
     restart: "no"
+
+
   # ─────────────────────────────
   # Neo4j Graph Database
+  # Browser: http://localhost:7474  (neo4j / <NEO4J_PASSWORD from .env>)
   # ─────────────────────────────
   neo4j:
     image: neo4j:5.18-enterprise
@@ -170,7 +196,7 @@ services:
       - "7687:7687"
 
     environment:
-      NEO4J_AUTH: ${NEO4J_USER}/${NEO4J_PASSWORD}
+      NEO4J_AUTH: ${NEO4J_USER:-neo4j}/${NEO4J_PASSWORD}
       NEO4J_ACCEPT_LICENSE_AGREEMENT: "yes"
 
       NEO4J_PLUGINS: '["graph-data-science", "apoc"]'
@@ -187,7 +213,7 @@ services:
       test:
         [
           "CMD-SHELL",
-          "cypher-shell -u ${NEO4J_USER} -p ${NEO4J_PASSWORD} 'RETURN 1'"
+          "cypher-shell -u ${NEO4J_USER:-neo4j} -p ${NEO4J_PASSWORD} 'RETURN 1'"
         ]
       interval: 15s
       timeout: 10s
@@ -224,7 +250,9 @@ services:
 
 
   # ─────────────────────────────
-  # Ollama (LLM)
+  # Ollama (local LLM)
+  # Pulls models on first run -- see OLLAMA_MODEL in .env.
+  # Not needed when LLM_PROVIDER=cloud (Gemini).
   # ─────────────────────────────
   ollama:
     image: ollama/ollama:latest
@@ -239,10 +267,11 @@ services:
 
 
   # ─────────────────────────────
-  # Redis Commander (dev tools)
+  # Dev tools (opt-in: --profile tools)
   # ─────────────────────────────
   redis-commander:
     image: rediscommander/redis-commander:latest
+    profiles: ["tools"]
 
     ports:
       - "8081:8081"
@@ -253,28 +282,24 @@ services:
     depends_on:
       - redis
 
-    profiles: ["tools"]
 
-
-  # ─────────────────────────────
-  # Jaeger (Tracing)
-  # ─────────────────────────────
   jaeger:
     image: jaegertracing/all-in-one:latest
+    profiles: ["tools"]
 
     ports:
-      - "16686:16686"
-      - "4317:4317"
-      - "4318:4318"
-
-    profiles: ["tools"]
+      - "16686:16686"   # Jaeger UI
+      - "4317:4317"     # OTLP gRPC
+      - "4318:4318"     # OTLP HTTP
 
 
   # ─────────────────────────────
-  # Prometheus
+  # Monitoring (opt-in: --profile monitoring)
+  # Grafana: http://localhost:3000  (admin/admin)
   # ─────────────────────────────
   prometheus:
     image: prom/prometheus:latest
+    profiles: ["monitoring"]
 
     ports:
       - "9090:9090"
@@ -282,14 +307,10 @@ services:
     volumes:
       - ./infra/monitoring/prometheus.yml:/etc/prometheus/prometheus.yml
 
-    profiles: ["monitoring"]
 
-
-  # ─────────────────────────────
-  # Grafana
-  # ─────────────────────────────
   grafana:
     image: grafana/grafana:latest
+    profiles: ["monitoring"]
 
     ports:
       - "3000:3000"
@@ -297,16 +318,12 @@ services:
     environment:
       GF_SECURITY_ADMIN_PASSWORD: admin
 
-    profiles: ["monitoring"]
-
 
   # ─────────────────────────────
   # School Box Sync Agent
-  # Runs on the local School Box device (Raspberry Pi / mini-PC).
-  # Start with: docker compose --profile school-box up -d sync-agent
-  # Requires a separate .env.school-box (see .env.school-box.example).
-  # The local Postgres container (profiles: local-db) must already be running
-  # and migrated before this service starts.
+  # Run with: docker compose --profile school-box up -d sync-agent
+  # Requires: .env.school-box (see .env.school-box.example) and the
+  # local-db postgres container already running and migrated.
   # ─────────────────────────────
   sync-agent:
     build:
@@ -318,14 +335,11 @@ services:
       - .env.school-box
 
     environment:
-      # CLOUD_API_URL, DEVICE_ID, DEVICE_SECRET, SCHOOL_ID,
-      # LOCAL_POSTGRES_DSN or POSTGRES_* components —
-      # all come from .env.school-box (see .env.school-box.example).
       SYNC_INTERVAL_SECONDS: ${SYNC_INTERVAL_SECONDS:-60}
       HEALTH_ADDR: ":8081"
 
     ports:
-      - "8082:8081"   # expose on 8082 to avoid clashing with cloud api:8080
+      - "8082:8081"
 
     depends_on:
       postgres:
@@ -341,7 +355,7 @@ services:
 
 
 # ─────────────────────────────
-# Volumes
+# Named volumes
 # ─────────────────────────────
 volumes:
   postgres_data:

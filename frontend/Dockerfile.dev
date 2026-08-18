@@ -2,11 +2,20 @@ FROM node:20-alpine
 
 WORKDIR /app
 
-COPY package.json ./
-RUN npm install
+# Copy manifests first so Docker layer-caches the npm install step.
+# Rebuild only when package.json or package-lock.json change.
+COPY package.json package-lock.json ./
+
+# --legacy-peer-deps avoids conflicts between packages with loose peer dep
+# ranges (e.g. radix-ui and react 18). ci is faster and more reproducible
+# than install for a fixed lockfile.
+RUN npm ci --legacy-peer-deps
 
 COPY . .
 
 EXPOSE 5173
 
+# --host 0.0.0.0 is required to accept connections from outside the container.
+# CHOKIDAR_USEPOLLING=true is set by docker-compose for Windows Docker Desktop
+# where inotify events don't cross the NTFS→Linux bind-mount boundary.
 CMD ["npm", "run", "dev", "--", "--host", "0.0.0.0"]

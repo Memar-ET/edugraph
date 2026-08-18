@@ -41,6 +41,10 @@ func (s *Service) Generate(ctx context.Context, requesterID string, req dto.Gene
 	return rep, nil
 }
 
+func (s *Service) List(ctx context.Context, requesterID string) ([]dto.ReportResponse, error) {
+	return s.repo.ListByRequester(ctx, requesterID)
+}
+
 func (s *Service) Get(ctx context.Context, requesterID string, reportID string) (dto.ReportResponse, error) {
 	rep, err := s.repo.GetByID(ctx, reportID)
 	if err != nil {

@@ -1,6 +1,7 @@
 import { useNavigate, useParams } from '@tanstack/react-router'
 import { useQuery } from '@tanstack/react-query'
-import { AlertCircle, BookOpen, Clock, FileText, Info } from 'lucide-react'
+import { useState } from 'react'
+import { AlertCircle, BookOpen, Clock, FileText, Info, RotateCcw } from 'lucide-react'
 
 import { AppShell } from '@components/layout'
 import { Banner, Button, Card, CardContent, CardHeader, CardTitle, Spinner } from '@components/ui'
@@ -17,12 +18,20 @@ const SCOPE_LABELS: Record<string, string> = {
 export function PreExamPage() {
   const { examId } = useParams({ from: '/student/exams/$examId/pre' })
   const navigate = useNavigate()
+  const [understood, setUnderstood] = useState(false)
 
   const { data: exam, isLoading, isError, error } = useQuery({
     queryKey: queryKeys.exam(examId),
     queryFn: () => getExam(examId),
   })
 
+  // The actual server-side attempt (assessment.exam_attempts row) is
+  // created by TakeExamPage's own call to POST /start on mount, not
+  // here -- this page is purely informational. Requiring the checkbox
+  // before this navigation is what makes "attempt creation must not
+  // happen just from viewing the info page" concrete: without it, a
+  // student can view duration/instructions/attempts-allowed without
+  // ever starting a real timed session.
   const startExam = () => {
     void navigate({ to: '/student/exams/$examId', params: { examId } })
   }
@@ -61,9 +70,20 @@ export function PreExamPage() {
                 </div>
                 <div className="flex flex-col items-center gap-1 rounded-xl bg-gray-50 py-4">
                   <Clock className="h-5 w-5 text-gray-400" />
-                  <span className="text-xl font-bold text-gray-900">–</span>
-                  <span className="text-xs text-gray-500">No Timer</span>
+                  <span className="text-xl font-bold text-gray-900">
+                    {exam.timeLimitMinutes ? `${exam.timeLimitMinutes}m` : '–'}
+                  </span>
+                  <span className="text-xs text-gray-500">
+                    {exam.timeLimitMinutes ? 'Time Limit' : 'No Time Limit'}
+                  </span>
                 </div>
+              </div>
+
+              <div className="flex items-center gap-2 text-xs text-gray-500">
+                <RotateCcw className="h-3.5 w-3.5" aria-hidden />
+                {exam.attemptLimit > 1
+                  ? `You may attempt this exam up to ${exam.attemptLimit} times.`
+                  : 'You get one attempt at this exam.'}
               </div>
 
               <div className="rounded-xl border border-blue-100 bg-blue-50 p-4 space-y-2">
@@ -74,9 +94,16 @@ export function PreExamPage() {
                 <ul className="space-y-1.5 text-xs text-blue-700 list-disc list-inside leading-relaxed">
                   <li>Read each question carefully before answering.</li>
                   <li>For multiple-choice questions, select the best answer.</li>
-                  <li>Your progress is saved automatically every 30 seconds.</li>
+                  <li>Your progress is saved automatically as you answer.</li>
+                  {exam.timeLimitMinutes && (
+                    <li>
+                      You have {exam.timeLimitMinutes} minutes once you start -- the timer begins immediately
+                      and does not pause if you close this tab.
+                    </li>
+                  )}
                   <li>You can return to any question before submitting.</li>
                   <li>Once submitted, you cannot change your answers.</li>
+                  <li>The order of questions and answer choices is randomized for each student.</li>
                 </ul>
               </div>
 
@@ -87,6 +114,19 @@ export function PreExamPage() {
                   study plan will be updated based on your performance.
                 </p>
               </div>
+
+              <label className="flex items-start gap-2 text-xs text-gray-600 pt-1">
+                <input
+                  type="checkbox"
+                  checked={understood}
+                  onChange={(e) => setUnderstood(e.target.checked)}
+                  className="mt-0.5"
+                />
+                <span>
+                  I understand the instructions above{exam.timeLimitMinutes ? ', including the time limit,' : ''}{' '}
+                  and I&apos;m ready to begin.
+                </span>
+              </label>
             </CardContent>
           </Card>
 
@@ -94,7 +134,7 @@ export function PreExamPage() {
             <Button variant="secondary" onClick={() => void navigate({ to: '/student/exams' })}>
               Back
             </Button>
-            <Button onClick={startExam} className="px-6">
+            <Button onClick={startExam} disabled={!understood} className="px-6">
               Start Exam
             </Button>
           </div>

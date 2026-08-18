@@ -18,26 +18,31 @@ import {
   StatusPill,
   toneForPct,
 } from '@components/ui'
-import { useMyStudentRecord } from '@features/student/useMyStudentRecord'
 import { apiErrorMessage } from '@lib/api/client'
 import { createCareerPath, generateCareerMatches, getCareerMatches, listCareerPaths } from '@lib/api/endpoints'
 import { queryKeys } from '@lib/query/keys'
 import { useAuthStore } from '@stores/auth.store'
 
 function MyCareerMatches() {
-  const { record: student } = useMyStudentRecord()
   const queryClient = useQueryClient()
 
+  // No GET /students/me exists, and none is needed here: the backend
+  // resolves the caller's own students.id server-side from the JWT
+  // (career/handler.go), so this never needs the roster-browse lookup
+  // useMyStudentRecord used to do via GET /students?school_id=... --
+  // an endpoint the student role was deliberately never granted (see
+  // router.go's RBAC comment on that route), which made this component
+  // 403 for every student before matchesQuery ever ran. The query key
+  // just needs to be stable per logged-in student, which 'me' already is.
   const matchesQuery = useQuery({
-    queryKey: queryKeys.careerMatches(student?.id ?? 'unknown'),
+    queryKey: queryKeys.careerMatches('me'),
     queryFn: () => getCareerMatches(),
-    enabled: Boolean(student),
   })
 
   const generate = useMutation({
     mutationFn: () => generateCareerMatches(),
     onSuccess: (matches) => {
-      queryClient.setQueryData(queryKeys.careerMatches(student!.id), matches)
+      queryClient.setQueryData(queryKeys.careerMatches('me'), matches)
     },
   })
 
@@ -45,7 +50,7 @@ function MyCareerMatches() {
     <Card>
       <CardHeader className="flex flex-row items-center justify-between">
         <CardTitle className="text-base">My career matches</CardTitle>
-        <Button size="sm" onClick={() => generate.mutate()} isLoading={generate.isPending} disabled={!student}>
+        <Button size="sm" onClick={() => generate.mutate()} isLoading={generate.isPending}>
           <Sparkles className="h-4 w-4" aria-hidden />
           {matchesQuery.data && matchesQuery.data.length > 0 ? 'Regenerate' : 'Generate my matches'}
         </Button>
@@ -53,6 +58,9 @@ function MyCareerMatches() {
       <CardContent className="space-y-3">
         {generate.isError && (
           <Banner tone="error">{apiErrorMessage(generate.error, 'Could not generate career matches.')}</Banner>
+        )}
+        {matchesQuery.isError && (
+          <Banner tone="error">{apiErrorMessage(matchesQuery.error, 'Could not load your career matches.')}</Banner>
         )}
         {matchesQuery.isLoading && (
           <div className="flex items-center gap-2 text-sm text-gray-500">
@@ -93,28 +101,28 @@ export function CareerPathsPage() {
 
   const [title, setTitle] = useState('')
   const [description, setDescription] = useState('')
-  const [subjects, setSubjects] = useState('')
+  const [sector, setSector] = useState('')
+  const [minEduLevel, setMinEduLevel] = useState('')
 
   const create = useMutation({
     mutationFn: createCareerPath,
     onSuccess: () => {
       setTitle('')
       setDescription('')
-      setSubjects('')
+      setSector('')
+      setMinEduLevel('')
       void queryClient.invalidateQueries({ queryKey: queryKeys.careerPaths() })
     },
   })
 
   const handleSubmit = (e: FormEvent) => {
     e.preventDefault()
-    if (!title.trim()) return
+    if (!title.trim() || !sector.trim() || !minEduLevel.trim()) return
     create.mutate({
       title: title.trim(),
       description: description.trim() || undefined,
-      required_subjects: subjects
-        .split(',')
-        .map((s) => s.trim())
-        .filter(Boolean),
+      sector: sector.trim(),
+      minEduLevel: minEduLevel.trim(),
     })
   }
 
@@ -176,12 +184,23 @@ export function CareerPathsPage() {
                   <Input id="career-desc" value={description} onChange={(e) => setDescription(e.target.value)} />
                 </div>
                 <div>
-                  <Label htmlFor="career-subjects">Required subjects (comma-separated)</Label>
+                  <Label htmlFor="career-sector">Sector</Label>
                   <Input
-                    id="career-subjects"
-                    value={subjects}
-                    onChange={(e) => setSubjects(e.target.value)}
-                    placeholder="PHY, MATH"
+                    id="career-sector"
+                    value={sector}
+                    onChange={(e) => setSector(e.target.value)}
+                    placeholder="Healthcare"
+                    required
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="career-min-edu">Minimum education level</Label>
+                  <Input
+                    id="career-min-edu"
+                    value={minEduLevel}
+                    onChange={(e) => setMinEduLevel(e.target.value)}
+                    placeholder="Bachelor's degree"
+                    required
                   />
                 </div>
                 <Button type="submit" isLoading={create.isPending} className="w-full">

@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react'
+import { useRef, useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useNavigate } from '@tanstack/react-router'
 import {
@@ -21,74 +21,22 @@ import {
 import { Banner, Button, Card, CardContent, CardHeader, CardTitle, EmptyState, Input, Spinner, StatusPill } from '@components/ui'
 import { HeatmapGrid } from '@components/charts'
 import { apiErrorMessage } from '@lib/api/client'
-import { getClassHeatmap } from '@lib/api/endpoints'
+import { getClassHeatmap, listExams } from '@lib/api/endpoints'
 import { queryKeys } from '@lib/query/keys'
+import type { ExamListItem } from '@lib/api/endpoints'
 
-const MOCK_TEACHER_PERFORMANCE = [
-  { label: 'Jan', value: 70 },
-  { label: 'Feb', value: 76 },
-  { label: 'Mar', value: 74 },
-  { label: 'Apr', value: 88 },
-  { label: 'May', value: 82 },
-  { label: 'June', value: 94 },
-]
-
-const MOCK_TEACHER_DONUT = [
-  { name: 'Proficient', value: 62, color: '#2d2d2e' },
-  { name: 'Moderate Gap', value: 26, color: '#6b7280' },
-  { name: 'Severe Gap', value: 12, color: '#e5e7eb' },
-]
-
-const MOCK_TEACHER_SCHEDULE = [
-  {
-    id: 'ts1',
-    title: 'Physics Grade 11 Midterm',
-    time: '09:00 AM - 11:00 AM',
-    subtitle: 'Class Room 102',
-    category: 'schedule' as const,
-  },
-  {
-    id: 'ts2',
-    title: 'Chemistry Lab Quiz Grading',
-    time: '01:30 PM (Today)',
-    subtitle: '34 Submissions Pending',
-    category: 'upcoming' as const,
-  },
-  {
-    id: 'ts3',
-    title: 'Prerequisite Review Session',
-    time: '11:00 AM (Tomorrow)',
-    subtitle: 'Topic: Kinematics',
-    category: 'upcoming' as const,
-  },
-]
-
-interface TeacherExamRow {
-  id: string
-  name: string
-  admitDate: string
-  type: string
-  status: 'Published' | 'Draft' | 'Graded' | 'Review Required'
-}
-
-const MOCK_EXAM_ROWS: TeacherExamRow[] = [
-  { id: '#EX-901', name: 'Physics Grade 11 Kinematics', admitDate: '9/4/26', type: 'Physics (Grade 11)', status: 'Published' },
-  { id: '#EX-902', name: 'Chemistry Organic Compounds', admitDate: '4/4/26', type: 'Chemistry (Grade 11)', status: 'Graded' },
-  { id: '#EX-903', name: 'Mathematics Calculus Final', admitDate: '1/28/26', type: 'Mathematics (Grade 11)', status: 'Review Required' },
-  { id: '#EX-904', name: 'Biology Genetics Unit Quiz', admitDate: '1/31/26', type: 'Biology (Grade 11)', status: 'Draft' },
-]
+type ExamRow = ExamListItem & { id: string }
 
 export function TeacherDashboardPage() {
   const navigate = useNavigate()
   const [examId, setExamId] = useState('')
-  const [subjectCode, setSubjectCode] = useState('PHY')
-  const [gradeLevel, setGradeLevel] = useState('11')
+  const [subjectCode, setSubjectCode] = useState('BIO')
+  const [gradeLevel, setGradeLevel] = useState('9')
   const [scope, setScope] = useState<{ subjectCode: string; gradeLevel: number }>({
-    subjectCode: 'PHY',
-    gradeLevel: 11,
+    subjectCode: 'BIO',
+    gradeLevel: 9,
   })
 
-  // ExplainPage quick-jump: topic selected from heatmap + student ID input
   const [selectedTopic, setSelectedTopic] = useState<{ id: string; title: string } | null>(null)
   const [studentIdInput, setStudentIdInput] = useState('')
   const studentIdRef = useRef<HTMLInputElement>(null)
@@ -99,21 +47,64 @@ export function TeacherDashboardPage() {
     setTimeout(() => studentIdRef.current?.focus(), 50)
   }
 
-  const openExplainPage = () => {
-    const sid = studentIdInput.trim()
-    if (!sid || !selectedTopic) return
-    void navigate({
-      to: '/students/$studentId/topics/$topicId/explain',
-      params: { studentId: sid, topicId: selectedTopic.id },
-    })
-    setSelectedTopic(null)
-    setStudentIdInput('')
-  }
-
-  const { data, isLoading, isError, error } = useQuery({
+  const { data: heatmapData, isLoading: heatmapLoading, isError: heatmapError, error: heatmapErr } = useQuery({
     queryKey: queryKeys.classHeatmap(scope.subjectCode, scope.gradeLevel),
     queryFn: () => getClassHeatmap(scope.subjectCode, scope.gradeLevel),
   })
+
+  const { data: examsData, isLoading: examsLoading } = useQuery({
+    queryKey: queryKeys.exams(),
+    queryFn: () => listExams(1, 50),
+  })
+
+  const exams = useMemo(() => examsData?.items ?? [], [examsData])
+  const examRows = useMemo<ExamRow[]>(() => exams.map((e) => ({ ...e, id: e.examId })), [exams])
+
+  // Derived KPIs from real exam data
+  const totalExams = exams.length
+  const publishedCount = exams.filter((e) => e.status === 'published').length
+  const draftCount = exams.filter((e) => e.status === 'draft').length
+
+  // Derived donut from heatmap (when available) or exam counts
+  const donutSegments = useMemo(() => {
+    if (heatmapData && heatmapData.topics.length > 0) {
+      const severe = heatmapData.topics.filter((t) => t.strugglingPct > 50).length
+      const moderate = heatmapData.topics.filter((t) => t.strugglingPct > 20 && t.strugglingPct <= 50).length
+      const proficient = heatmapData.topics.filter((t) => t.strugglingPct <= 20).length
+      return [
+        { name: 'Proficient', value: proficient, color: '#2d2d2e' },
+        { name: 'Moderate Gap', value: moderate, color: '#6b7280' },
+        { name: 'Severe Gap', value: severe, color: '#e5e7eb' },
+      ]
+    }
+    return [
+      { name: 'Proficient', value: publishedCount, color: '#2d2d2e' },
+      { name: 'Drafts', value: draftCount, color: '#6b7280' },
+    ]
+  }, [heatmapData, publishedCount, draftCount])
+
+  // Derive performance chart from heatmap topics mastery
+  const performanceData = useMemo(() => {
+    if (!heatmapData || heatmapData.topics.length === 0) return []
+    return heatmapData.topics
+      .slice(0, 6)
+      .map((t) => ({ label: t.title.slice(0, 8), value: Math.round((1 - t.strugglingPct / 100) * 100) }))
+  }, [heatmapData])
+
+  // Schedule from real exams (published = scheduled, draft = upcoming)
+  const scheduleItems = useMemo(() => {
+    if (exams.length === 0) return []
+    return exams.slice(0, 4).map((e) => ({
+      id: e.examId,
+      title: e.title,
+      time: new Date(e.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+      subtitle: `${e.subjectCode} · Grade ${e.gradeLevel}`,
+      category: (e.status === 'published' ? 'schedule' : 'upcoming') as 'schedule' | 'upcoming',
+    }))
+  }, [exams])
+
+  // Cross-grade alert count from heatmap
+  const alertCount = heatmapData?.alerts?.length ?? 0
 
   const loadHeatmap = () => {
     const code = subjectCode.trim().toUpperCase()
@@ -129,56 +120,69 @@ export function TeacherDashboardPage() {
     void navigate({ to: '/teacher/exams/$examId', params: { examId: id } })
   }
 
+  const openExplainPage = () => {
+    const sid = studentIdInput.trim()
+    if (!sid || !selectedTopic) return
+    void navigate({
+      to: '/students/$studentId/topics/$topicId/explain',
+      params: { studentId: sid, topicId: selectedTopic.id },
+    })
+    setSelectedTopic(null)
+    setStudentIdInput('')
+  }
+
   const tableColumns = [
     {
-      key: 'id',
+      key: 'examId',
       header: 'Exam ID',
       sortable: true,
-      render: (item: TeacherExamRow) => (
-        <span className="font-mono font-semibold text-gray-500">{item.id}</span>
+      render: (item: ExamRow) => (
+        <span className="font-mono font-semibold text-gray-500">{item.examId.slice(0, 8)}</span>
       ),
     },
     {
-      key: 'name',
-      header: 'Exam Title & Topic',
+      key: 'title',
+      header: 'Exam Title',
       sortable: true,
-      render: (item: TeacherExamRow) => (
-        <span className="font-bold text-gray-900">{item.name}</span>
+      render: (item: ExamRow) => (
+        <span className="font-bold text-gray-900">{item.title}</span>
       ),
     },
     {
-      key: 'admitDate',
+      key: 'createdAt',
       header: 'Date Created',
       sortable: true,
-      render: (item: TeacherExamRow) => <span className="text-gray-600">{item.admitDate}</span>,
+      render: (item: ExamRow) => (
+        <span className="text-gray-600">{new Date(item.createdAt).toLocaleDateString()}</span>
+      ),
     },
     {
-      key: 'type',
+      key: 'subject',
       header: 'Subject & Grade',
-      render: (item: TeacherExamRow) => <span className="text-gray-600 font-medium">{item.type}</span>,
+      render: (item: ExamRow) => (
+        <span className="text-gray-600 font-medium">
+          {item.subjectCode} (Grade {item.gradeLevel})
+        </span>
+      ),
     },
     {
       key: 'status',
       header: 'Status',
-      render: (item: TeacherExamRow) => {
+      render: (item: ExamRow) => {
         const tone =
-          item.status === 'Published'
-            ? 'health'
-            : item.status === 'Graded'
-              ? 'seal'
-              : item.status === 'Review Required'
-                ? 'alert'
-                : 'alert'
+          item.status === 'published' ? 'health'
+          : item.status === 'closed' ? 'seal'
+          : 'alert'
         return <StatusPill tone={tone}>{item.status}</StatusPill>
       },
     },
     {
-      key: 'details',
+      key: 'action',
       header: 'Action',
-      render: (item: TeacherExamRow) => (
+      render: (item: ExamRow) => (
         <button
           type="button"
-          onClick={() => void navigate({ to: '/teacher/exams/$examId', params: { examId: item.id.replace('#', '') } })}
+          onClick={() => void navigate({ to: '/teacher/exams/$examId', params: { examId: item.examId } })}
           className="rounded-lg border border-gray-200 bg-white px-2.5 py-1 text-[11px] font-semibold text-gray-700 hover:bg-gray-50"
         >
           Review Exam
@@ -189,7 +193,7 @@ export function TeacherDashboardPage() {
 
   return (
     <AppShell
-      title="Teacher Assessment & Class Dashboard 👋"
+      title="Teacher Assessment & Class Dashboard"
       description="Monitor class performance, create & grade exams, and inspect prerequisite gap heatmaps."
       actions={
         <button
@@ -206,34 +210,34 @@ export function TeacherDashboardPage() {
         {/* Top Metric Cards */}
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <StatMetricCard
-            title="Total Active Classes"
-            value="4 Classes"
-            change="12.5%"
+            title="Total Exams"
+            value={examsLoading ? '…' : `${totalExams} Exams`}
+            change=""
             trend="up"
-            periodText="Grade 9-12"
-            icon={Users}
-          />
-          <StatMetricCard
-            title="Exams Created"
-            value="14 Exams"
-            change="8.4%"
-            trend="up"
-            periodText="This Term"
+            periodText="All time"
             icon={ClipboardList}
           />
           <StatMetricCard
-            title="Class Avg Mastery"
-            value="78.2%"
-            change="14.1%"
+            title="Published Exams"
+            value={examsLoading ? '…' : `${publishedCount} Active`}
+            change=""
             trend="up"
-            periodText="Last Month"
+            periodText="Live this term"
             icon={CheckCircle2}
           />
           <StatMetricCard
+            title="Topics Tracked"
+            value={heatmapData ? `${heatmapData.topics.length} Topics` : '—'}
+            change=""
+            trend="up"
+            periodText={`${scope.subjectCode} G${scope.gradeLevel}`}
+            icon={Users}
+          />
+          <StatMetricCard
             title="Cross-Grade Alerts"
-            value="3 Topics"
-            change="High Severity"
-            trend="down"
+            value={heatmapData ? `${alertCount} ${alertCount === 1 ? 'Alert' : 'Alerts'}` : '—'}
+            change={alertCount > 0 ? 'High Severity' : 'None'}
+            trend={alertCount > 0 ? 'down' : 'up'}
             periodText="Prerequisite Gaps"
             icon={AlertTriangle}
           />
@@ -241,32 +245,40 @@ export function TeacherDashboardPage() {
 
         {/* Charts & Schedule Asymmetric Grid */}
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-12">
-          {/* Performance Area Chart */}
+          {/* Performance Area Chart — derived from heatmap mastery */}
           <div className="lg:col-span-5">
-            <PerformanceAreaChart
-              title="Class Average Performance"
-              subtitle="Monthly Assessment Score Trends"
-              data={MOCK_TEACHER_PERFORMANCE}
-            />
+            {performanceData.length > 0 ? (
+              <PerformanceAreaChart
+                title="Topic Mastery by Topic"
+                subtitle={`${scope.subjectCode} Grade ${scope.gradeLevel} — top topics`}
+                data={performanceData}
+              />
+            ) : (
+              <Card className="rounded-2xl border-gray-100 shadow-sm h-full flex items-center justify-center">
+                <CardContent className="text-center py-8">
+                  <p className="text-xs text-gray-500">Load a class heatmap below to see mastery chart.</p>
+                </CardContent>
+              </Card>
+            )}
           </div>
 
           {/* Donut Chart */}
           <div className="lg:col-span-4">
             <DistributionDonutChart
               title="Class Mastery Breakdown"
-              centerPercentage="78%"
+              centerPercentage={heatmapData ? `${Math.round((1 - heatmapData.topics.reduce((s, t) => s + t.strugglingPct, 0) / Math.max(1, heatmapData.topics.length) / 100) * 100)}%` : '—'}
               centerLabel="Mastered"
-              totalValue="142 Enrolled Students"
-              segments={MOCK_TEACHER_DONUT}
+              totalValue={heatmapData ? `${heatmapData.topics.length} Topics Tracked` : 'Load heatmap below'}
+              segments={donutSegments}
               dateLabel="Active Term"
             />
           </div>
 
-          {/* Schedule Widget */}
+          {/* Schedule Widget from real exams */}
           <div className="lg:col-span-3">
             <ScheduleCalendarWidget
-              monthLabel="April 2026"
-              scheduleItems={MOCK_TEACHER_SCHEDULE}
+              monthLabel={new Date().toLocaleString('default', { month: 'long', year: 'numeric' })}
+              scheduleItems={scheduleItems}
               onAddNew={() => void navigate({ to: '/teacher/exams/upload' })}
             />
           </div>
@@ -289,13 +301,13 @@ export function TeacherDashboardPage() {
                   <Input
                     value={subjectCode}
                     onChange={(e) => setSubjectCode(e.target.value)}
-                    placeholder="PHY"
+                    placeholder="BIO"
                     className="w-20 text-xs"
                   />
                   <Input
                     value={gradeLevel}
                     onChange={(e) => setGradeLevel(e.target.value)}
-                    placeholder="11"
+                    placeholder="9"
                     type="number"
                     className="w-16 text-xs"
                   />
@@ -305,15 +317,15 @@ export function TeacherDashboardPage() {
                 </div>
               </CardHeader>
               <CardContent>
-                {isLoading && (
+                {heatmapLoading && (
                   <div className="flex items-center gap-2 py-6 text-xs text-gray-500">
                     <Spinner /> Loading class gap heatmap...
                   </div>
                 )}
-                {isError && <Banner tone="error">{apiErrorMessage(error, 'Could not load heatmap.')}</Banner>}
-                {data && data.topics.length > 0 ? (
+                {heatmapError && <Banner tone="error">{apiErrorMessage(heatmapErr, 'Could not load heatmap.')}</Banner>}
+                {heatmapData && heatmapData.topics.length > 0 ? (
                   <>
-                    <HeatmapGrid topics={data.topics} onTopicClick={handleTopicClick} />
+                    <HeatmapGrid topics={heatmapData.topics} onTopicClick={handleTopicClick} />
                     {selectedTopic && (
                       <div className="mt-3 rounded-xl border border-indigo-100 bg-indigo-50 p-3 space-y-2">
                         <p className="text-xs font-semibold text-indigo-800">
@@ -342,7 +354,9 @@ export function TeacherDashboardPage() {
                     )}
                   </>
                 ) : (
-                  <EmptyState title="No gap data for selection" description="Publish an exam to generate class heatmap insights." />
+                  !heatmapLoading && (
+                    <EmptyState title="No gap data for selection" description="Enter a subject code and grade level, then click Load to see class heatmap insights." />
+                  )
                 )}
               </CardContent>
             </Card>
@@ -376,7 +390,7 @@ export function TeacherDashboardPage() {
           title="Exams & Assessment Management"
           searchPlaceholder="Search exam title, ID..."
           columns={tableColumns}
-          data={MOCK_EXAM_ROWS}
+          data={examRows}
         />
       </div>
     </AppShell>

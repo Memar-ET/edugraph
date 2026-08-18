@@ -1,11 +1,11 @@
 # ── Build ────────────────────────────────────────────────────
 FROM node:20-alpine AS builder
 WORKDIR /app
-RUN npm install -g pnpm@9
-COPY package.json pnpm-lock.yaml ./
-RUN pnpm install --frozen-lockfile
+COPY package.json package-lock.json ./
+RUN npm ci
 COPY . .
-RUN pnpm build
+RUN npm run build
+
 
 # ── Serve (nginx) ─────────────────────────────────────────────
 FROM nginx:alpine

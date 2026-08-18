@@ -39,6 +39,15 @@ func (h *Handler) Generate(w http.ResponseWriter, r *http.Request) {
 	middleware.WriteJSON(w, http.StatusAccepted, resp)
 }
 
+func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
+	items, err := h.svc.List(r.Context(), middleware.UserID(r.Context()))
+	if err != nil {
+		middleware.WriteError(w, err)
+		return
+	}
+	middleware.WriteJSON(w, http.StatusOK, items)
+}
+
 func (h *Handler) Get(w http.ResponseWriter, r *http.Request) {
 	resp, err := h.svc.Get(r.Context(), middleware.UserID(r.Context()), chi.URLParam(r, "id"))
 	if err != nil {

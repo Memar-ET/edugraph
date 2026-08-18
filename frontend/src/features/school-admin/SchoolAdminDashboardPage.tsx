@@ -4,50 +4,13 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Award, BookOpen, Send, ShieldCheck, Users } from 'lucide-react'
 
 import { AppShell } from '@components/layout'
-import {
-  DistributionDonutChart,
-  PerformanceAreaChart,
-  ScheduleCalendarWidget,
-  StatMetricCard,
-} from '@components/dashboard'
+import { StatMetricCard } from '@components/dashboard'
 import { Banner, Button, Card, CardContent, CardHeader, CardTitle, EmptyState, Input, Label, Select, Spinner } from '@components/ui'
 import { QualityScoreGrid } from '@components/shared'
 import { apiErrorMessage } from '@lib/api/client'
 import { createNotification, getSchool, getSchoolQualityScores, listStudents, listTeachers } from '@lib/api/endpoints'
 import { queryKeys } from '@lib/query/keys'
 import { useAuthStore } from '@stores/auth.store'
-
-const MOCK_SCHOOL_PERFORMANCE = [
-  { label: 'Jan', value: 72 },
-  { label: 'Feb', value: 78 },
-  { label: 'Mar', value: 81 },
-  { label: 'Apr', value: 85 },
-  { label: 'May', value: 88 },
-  { label: 'June', value: 92 },
-]
-
-const MOCK_SCHOOL_DONUT = [
-  { name: 'CLO Coverage', value: 84, color: '#2d2d2e' },
-  { name: 'Student Mastery', value: 76, color: '#6b7280' },
-  { name: 'Exam Quality', value: 88, color: '#e5e7eb' },
-]
-
-const MOCK_SCHOOL_SCHEDULE = [
-  {
-    id: 'sc1',
-    title: 'School Quality Score Audit',
-    time: '10:00 AM - 12:00 PM',
-    subtitle: 'Redis Cached TTL: 1h',
-    category: 'schedule' as const,
-  },
-  {
-    id: 'sc2',
-    title: 'Teacher Staff Meeting',
-    time: '03:00 PM (Today)',
-    subtitle: 'Roster: 24 Staff Members',
-    category: 'upcoming' as const,
-  },
-]
 
 export function SchoolAdminDashboardPage() {
   const user = useAuthStore((s) => s.user)
@@ -70,70 +33,11 @@ export function SchoolAdminDashboardPage() {
   return (
     <AppShell title={school?.name ?? 'School Admin Dashboard 👋'} description="Quality scores, roster breakdown, and notification dispatch.">
       <div className="space-y-6">
-        {/* Top Metric Cards */}
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          <StatMetricCard
-            title="Total Teachers"
-            value="24 Staff"
-            change="4.2%"
-            trend="up"
-            periodText="Active Roster"
-            icon={Users}
-          />
-          <StatMetricCard
-            title="Enrolled Students"
-            value="480 Students"
-            change="12.8%"
-            trend="up"
-            periodText="Academic Year"
-            icon={BookOpen}
-          />
-          <StatMetricCard
-            title="School Quality Score"
-            value="84.2%"
-            change="6.4%"
-            trend="up"
-            periodText="Composite Score"
-            icon={ShieldCheck}
-          />
-          <StatMetricCard
-            title="CLO Standard Mastery"
-            value="88.0%"
-            change="8.2%"
-            trend="up"
-            periodText="Curriculum Alignment"
-            icon={Award}
-          />
-        </div>
+        {/* Top Metric Cards — wired to real data */}
+        <TopKpiStrip schoolId={schoolId} />
 
-        {/* Charts & Schedule Asymmetric Grid */}
-        <div className="grid grid-cols-1 gap-6 lg:grid-cols-12">
-          <div className="lg:col-span-5">
-            <PerformanceAreaChart
-              title="School-Wide Quality Trend"
-              subtitle="Monthly Composite Score Progress"
-              data={MOCK_SCHOOL_PERFORMANCE}
-            />
-          </div>
-
-          <div className="lg:col-span-4">
-            <DistributionDonutChart
-              title="Quality Index Breakdown"
-              centerPercentage="84%"
-              centerLabel="Quality"
-              totalValue="84.2 Composite"
-              segments={MOCK_SCHOOL_DONUT}
-              dateLabel="Cached 1h"
-            />
-          </div>
-
-          <div className="lg:col-span-3">
-            <ScheduleCalendarWidget
-              monthLabel="April 2026"
-              scheduleItems={MOCK_SCHOOL_SCHEDULE}
-            />
-          </div>
-        </div>
+        {/* Quality Breakdown Charts — driven by real quality data */}
+        <QualityChartsSection schoolId={schoolId} />
 
         {/* Quality Scores Section */}
         <QualityScoresSection schoolId={schoolId} />
@@ -214,6 +118,67 @@ function RosterSection({ schoolId }: { schoolId: string }) {
         )}
       </CardContent>
     </Card>
+  )
+}
+
+function TopKpiStrip({ schoolId }: { schoolId: string }) {
+  const { data: teachers } = useQuery({
+    queryKey: queryKeys.teachers(schoolId),
+    queryFn: () => listTeachers(schoolId),
+  })
+  const { data: students } = useQuery({
+    queryKey: queryKeys.students(schoolId),
+    queryFn: () => listStudents(schoolId),
+  })
+  const { data: quality } = useQuery({
+    queryKey: queryKeys.schoolQuality(schoolId),
+    queryFn: () => getSchoolQualityScores(schoolId),
+  })
+
+  const avgQuality =
+    quality && quality.scores.length > 0
+      ? (quality.scores.reduce((s, q) => s + (q.compositeScore ?? 0), 0) / quality.scores.length * 100).toFixed(1)
+      : null
+
+  const avgMastery =
+    quality && quality.scores.length > 0
+      ? (quality.scores.reduce((s, q) => s + (q.studentMasteryPct ?? 0), 0) / quality.scores.length * 100).toFixed(1)
+      : null
+
+  return (
+    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <StatMetricCard title="Total Teachers" value={teachers ? `${teachers.length} Staff` : '—'} change="" trend="up" periodText="Active Roster" icon={Users} />
+      <StatMetricCard title="Enrolled Students" value={students ? `${students.length} Students` : '—'} change="" trend="up" periodText="Academic Year" icon={BookOpen} />
+      <StatMetricCard title="School Quality Score" value={avgQuality ? `${avgQuality}%` : '—'} change="" trend="up" periodText="Composite Score" icon={ShieldCheck} />
+      <StatMetricCard title="CLO Standard Mastery" value={avgMastery ? `${avgMastery}%` : '—'} change="" trend="up" periodText="Curriculum Alignment" icon={Award} />
+    </div>
+  )
+}
+
+function QualityChartsSection({ schoolId }: { schoolId: string }) {
+  const { data: quality, isLoading } = useQuery({
+    queryKey: queryKeys.schoolQuality(schoolId),
+    queryFn: () => getSchoolQualityScores(schoolId),
+  })
+
+  if (isLoading || !quality || quality.scores.length === 0) return null
+
+  const s = quality.scores[0]!
+  return (
+    <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+      {[
+        { label: 'Composite', value: ((s.compositeScore ?? 0) * 100).toFixed(1), color: 'text-teal-700' },
+        { label: 'Student Mastery', value: ((s.studentMasteryPct ?? 0) * 100).toFixed(1), color: 'text-blue-700' },
+        { label: 'CLO Coverage', value: ((s.cloCoveragePct ?? 0) * 100).toFixed(1), color: 'text-emerald-700' },
+        { label: 'Exam Quality', value: ((s.examQualityAvg ?? 0) * 100).toFixed(1), color: 'text-violet-700' },
+      ].map(({ label, value, color }) => (
+        <div key={label} className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+          <p className="text-xs font-medium text-slate-500">{label}</p>
+          <p className={`mt-1 text-3xl font-bold font-display ${color}`}>{value}%</p>
+          <p className="mt-1 text-[11px] text-slate-400">Live from quality engine</p>
+        </div>
+      ))}
+    </div>
   )
 }
 

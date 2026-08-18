@@ -1,11 +1,10 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { AlertTriangle, ChevronDown, ChevronUp, GraduationCap, School as SchoolIcon, ShieldCheck, Users } from 'lucide-react'
 
 import { AppShell } from '@components/layout'
 import {
   DistributionDonutChart,
-  PerformanceAreaChart,
   ScheduleCalendarWidget,
   StatMetricCard,
 } from '@components/dashboard'
@@ -17,41 +16,46 @@ import { formatNumber, formatPercent } from '@lib/utils/format'
 import { useAuthStore } from '@stores/auth.store'
 import type { UnderperformingSchool } from '@/types/api'
 
-const MOCK_REGIONAL_PERFORMANCE = [
-  { label: 'Jan', value: 68 },
-  { label: 'Feb', value: 74 },
-  { label: 'Mar', value: 79 },
-  { label: 'Apr', value: 83 },
-  { label: 'May', value: 86 },
-  { label: 'June', value: 91 },
-]
-
-const MOCK_REGIONAL_DONUT = [
-  { name: 'High Performing', value: 64, color: '#2d2d2e' },
-  { name: 'On Track', value: 24, color: '#6b7280' },
-  { name: 'Under Audit', value: 12, color: '#e5e7eb' },
-]
-
-const MOCK_REGIONAL_SCHEDULE = [
-  {
-    id: 'rg1',
-    title: 'Regional School Audit Meeting',
-    time: '09:30 AM - 11:30 AM',
-    subtitle: 'Addis Ababa Zonal Board',
-    category: 'schedule' as const,
-  },
-  {
-    id: 'rg2',
-    title: 'Curriculum Alignment Inspection',
-    time: '02:00 PM (Tomorrow)',
-    subtitle: '12 Target Schools',
-    category: 'upcoming' as const,
-  },
-]
-
 export function RegionalDashboardPage() {
   const user = useAuthStore((s) => s.user)
   const regionId = user?.region_id
+
+  const { data: stats } = useQuery({
+    queryKey: queryKeys.regionStats(regionId ?? ''),
+    queryFn: () => getRegionStats(regionId!),
+    enabled: !!regionId,
+  })
+
+  const { data: underperforming } = useQuery({
+    queryKey: queryKeys.regionUnderperforming(regionId ?? ''),
+    queryFn: () => getUnderperformingSchools(regionId!, 10),
+    enabled: !!regionId,
+  })
+
+  const donutSegments = useMemo(() => {
+    const schools = underperforming?.schools ?? []
+    if (schools.length === 0) return []
+    const high = schools.filter((s) => s.mastery_rate >= 0.8).length
+    const mid = schools.filter((s) => s.mastery_rate >= 0.6 && s.mastery_rate < 0.8).length
+    const low = schools.filter((s) => s.mastery_rate < 0.6).length
+    return [
+      { name: 'High Performing', value: high, color: '#2d2d2e' },
+      { name: 'On Track', value: mid, color: '#6b7280' },
+      { name: 'Under Audit', value: low, color: '#e5e7eb' },
+    ].filter((s) => s.value > 0)
+  }, [underperforming])
+
+  const scheduleItems = useMemo(() => {
+    return (underperforming?.schools ?? []).slice(0, 3).map((s) => ({
+      id: s.school_id,
+      title: `${s.school_name} — Needs Support`,
+      time: `${(s.mastery_rate * 100).toFixed(0)}% mastery · ${s.flagged_topics_count} topics`,
+      subtitle: s.school_code,
+      category: 'upcoming' as const,
+    }))
+  }, [underperforming])
+
+  const avgMastery = stats?.avg_assessment_score ?? 0
 
   if (!regionId) {
     return (
@@ -68,28 +72,45 @@ export function RegionalDashboardPage() {
 
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-12">
           <div className="lg:col-span-5">
-            <PerformanceAreaChart
-              title="Regional Assessment Performance"
-              subtitle="Monthly Average Mastery Score Across Schools"
-              data={MOCK_REGIONAL_PERFORMANCE}
-            />
+            <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm h-full">
+              <h3 className="font-bold text-sm text-slate-900">Region Snapshot</h3>
+              <p className="text-xs text-slate-500 mt-0.5">Key indicators at a glance</p>
+              <div className="mt-4 grid grid-cols-2 gap-3">
+                <div className="rounded-xl bg-slate-50 p-3 border border-slate-100">
+                  <p className="text-xs text-slate-500">Schools</p>
+                  <p className="text-xl font-bold text-slate-900 mt-0.5">{stats ? formatNumber(stats.school_count) : '—'}</p>
+                </div>
+                <div className="rounded-xl bg-slate-50 p-3 border border-slate-100">
+                  <p className="text-xs text-slate-500">Students</p>
+                  <p className="text-xl font-bold text-slate-900 mt-0.5">{stats ? formatNumber(stats.student_count) : '—'}</p>
+                </div>
+                <div className="rounded-xl bg-slate-50 p-3 border border-slate-100">
+                  <p className="text-xs text-slate-500">Teachers</p>
+                  <p className="text-xl font-bold text-slate-900 mt-0.5">{stats ? formatNumber(stats.teacher_count) : '—'}</p>
+                </div>
+                <div className="rounded-xl bg-teal-50 p-3 border border-teal-100">
+                  <p className="text-xs text-teal-600">Avg Mastery</p>
+                  <p className="text-xl font-bold text-teal-800 mt-0.5">{avgMastery > 0 ? `${avgMastery.toFixed(1)}%` : '—'}</p>
+                </div>
+              </div>
+            </div>
           </div>
 
           <div className="lg:col-span-4">
             <DistributionDonutChart
               title="School Quality Distribution"
-              centerPercentage="83%"
-              centerLabel="Avg Score"
-              totalValue="83.5% Mastery"
-              segments={MOCK_REGIONAL_DONUT}
+              centerPercentage={avgMastery > 0 ? `${avgMastery.toFixed(0)}%` : '—'}
+              centerLabel="Avg Mastery"
+              totalValue={stats ? `${stats.school_count} Schools` : 'Loading…'}
+              segments={donutSegments}
               dateLabel="Active Region"
             />
           </div>
 
           <div className="lg:col-span-3">
             <ScheduleCalendarWidget
-              monthLabel="April 2026"
-              scheduleItems={MOCK_REGIONAL_SCHEDULE}
+              monthLabel={new Date().toLocaleDateString(undefined, { month: 'long', year: 'numeric' })}
+              scheduleItems={scheduleItems}
             />
           </div>
         </div>

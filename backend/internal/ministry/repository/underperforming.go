@@ -27,15 +27,21 @@ type UnderperformingSchoolRow struct {
 // ordered by ascending average mastery, capped at limit. Each school also
 // carries its top 3 weakest topics.
 func (r *Repository) UnderperformingSchools(ctx context.Context, regionID string, limit int) ([]UnderperformingSchoolRow, map[string][]WeakTopicRow, error) {
-	// Step 1: worst schools by average mastery across their students' gap_records.
+	// Step 1: worst schools by average mastery across their students'
+	// gap_records. gap_records has no mastery_score column -- the closest
+	// real signal is severity_score (0-1, higher = worse gap), so mastery
+	// is approximated as its inverse. This only covers topics where a gap
+	// was actually detected (gap_records only has rows for flagged
+	// weaknesses, not a full per-topic mastery table), same limitation
+	// the pre-existing "< 0.5" flagged-topic threshold already had.
 	const schoolQ = `
 		SELECT
 			sc.id,
 			sc.name,
 			sc.code,
-			COALESCE(sq.composite_score, 0)              AS quality_score,
-			COALESCE(AVG(gr.mastery_score), 0)           AS mastery_rate,
-			COUNT(DISTINCT CASE WHEN gr.mastery_score < 0.5 THEN gr.topic_id END) AS flagged_topics_count
+			COALESCE(sq.composite_score, 0)                      AS quality_score,
+			COALESCE(AVG(1 - gr.severity_score), 0)              AS mastery_rate,
+			COUNT(DISTINCT CASE WHEN gr.severity_score > 0.5 THEN gr.topic_id END) AS flagged_topics_count
 		FROM schools sc
 		LEFT JOIN students.gap_records gr ON gr.school_id = sc.id
 		LEFT JOIN schools.quality_scores sq ON sq.school_id = sc.id
@@ -77,17 +83,17 @@ func (r *Repository) UnderperformingSchools(ctx context.Context, regionID string
 			SELECT
 				gr.school_id,
 				gr.topic_id,
-				ct.title                       AS topic_title,
-				AVG(gr.mastery_score)          AS avg_mastery,
+				ct.title_en                    AS topic_title,
+				AVG(1 - gr.severity_score)     AS avg_mastery,
 				COUNT(DISTINCT gr.student_id)  AS affected_students,
 				ROW_NUMBER() OVER (
 					PARTITION BY gr.school_id
-					ORDER BY AVG(gr.mastery_score) ASC
+					ORDER BY AVG(1 - gr.severity_score) ASC
 				) AS rn
 			FROM students.gap_records gr
 			JOIN curriculum.topics ct ON ct.id = gr.topic_id
 			WHERE gr.school_id = ANY($1::uuid[])
-			GROUP BY gr.school_id, gr.topic_id, ct.title
+			GROUP BY gr.school_id, gr.topic_id, ct.title_en
 		)
 		SELECT school_id, topic_id, topic_title, avg_mastery, affected_students
 		FROM ranked

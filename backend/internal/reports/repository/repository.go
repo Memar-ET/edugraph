@@ -44,6 +44,53 @@ func (r *Repository) Create(ctx context.Context, requesterID string, req dto.Gen
 	}, nil
 }
 
+// ListByRequester returns every report the given user requested, newest
+// first. Scoped to the caller's own reports -- report_results has no
+// school/region column to scope by otherwise, and "my generated reports"
+// is the correct default for a personal report queue regardless of role.
+func (r *Repository) ListByRequester(ctx context.Context, requesterID string) ([]dto.ReportResponse, error) {
+	rows, err := r.db.Query(ctx,
+		`SELECT id, report_type, params, result, requester_id::text, status,
+		        error_text, generated_at, created_at, updated_at
+		 FROM public.report_results
+		 WHERE requester_id = $1::uuid
+		 ORDER BY created_at DESC`,
+		requesterID,
+	)
+	if err != nil {
+		return nil, apperrors.Internal(err)
+	}
+	defer rows.Close()
+
+	items := make([]dto.ReportResponse, 0)
+	for rows.Next() {
+		var rep dto.ReportResponse
+		var params, result []byte
+		var errorText *string
+		var generatedAt *time.Time
+		if err := rows.Scan(
+			&rep.ID, &rep.ReportType, &params, &result,
+			&rep.RequesterID, &rep.Status,
+			&errorText, &generatedAt, &rep.CreatedAt, &rep.UpdatedAt,
+		); err != nil {
+			return nil, apperrors.Internal(err)
+		}
+		if len(params) > 0 {
+			rep.Params = json.RawMessage(params)
+		}
+		if len(result) > 0 {
+			rep.Result = json.RawMessage(result)
+		}
+		rep.ErrorText = errorText
+		rep.GeneratedAt = generatedAt
+		items = append(items, rep)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, apperrors.Internal(err)
+	}
+	return items, nil
+}
+
 func (r *Repository) GetByID(ctx context.Context, id string) (dto.ReportResponse, error) {
 	row := r.db.QueryRow(ctx,
 		`SELECT id, report_type, params, result, requester_id::text, status,

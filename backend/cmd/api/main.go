@@ -11,6 +11,7 @@ import (
 	storagepkg "github.com/edugraph-ai/edugraph/pkg/storage"
 
 	assessmenthandler "github.com/edugraph-ai/edugraph/internal/assessment/handler"
+	"github.com/edugraph-ai/edugraph/internal/assessment/examworker"
 	"github.com/edugraph-ai/edugraph/internal/assessment/qualityworker"
 	assessmentrepo "github.com/edugraph-ai/edugraph/internal/assessment/repository"
 	assessmentsvc "github.com/edugraph-ai/edugraph/internal/assessment/service"
@@ -195,6 +196,11 @@ func main() {
 	// Capability 4C: nightly school quality recompute (the impl plan's
 	// "nightly Celery batch job" -- Go ticker here, no Celery by design).
 	go qualityworker.Run(syncWorkerCtx, assessmentService, 24*time.Hour, log)
+
+	// Production-hardening pass: auto-submits exam attempts whose
+	// server-set expires_at has passed. 30s keeps the gap between "time
+	// technically expired" and "actually finalized" small.
+	go examworker.Run(syncWorkerCtx, assessmentService, 30*time.Second, log)
 
 	// Metrics: poll Redis queue depths every 30 s and expose a JSON
 	// /metrics endpoint on :9090 (internal — not the public load-balancer

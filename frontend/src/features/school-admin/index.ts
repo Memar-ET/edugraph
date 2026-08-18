@@ -1,1 +1,10 @@
 export { SchoolAdminDashboardPage } from './SchoolAdminDashboardPage'
+export { SchoolQualityPage } from './SchoolQualityPage'
+export { StudentRosterPage } from './StudentRosterPage'
+export { TeacherRosterPage } from './TeacherRosterPage'
+export { SchoolReportsPage } from './SchoolReportsPage'
+export { SchoolClassesPage } from './SchoolClassesPage'
+export { SchoolAnalyticsPage } from './SchoolAnalyticsPage'
+export { SchoolApprovalsPage } from './SchoolApprovalsPage'
+export { SchoolAnnouncementsPage } from './SchoolAnnouncementsPage'
+

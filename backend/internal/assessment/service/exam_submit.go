@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/google/uuid"
 
@@ -44,15 +45,25 @@ func (s *Service) verifyStudentAccess(ctx context.Context, userID, examID uuid.U
 	return exam, student, nil
 }
 
-// ListExamQuestionsForStudent is what the exam-taking page fetches before
-// the student answers anything -- dto.StudentQuestion has no
-// answer_key/clo_code fields, unlike the grading-side QuestionForGrading.
+// ListExamQuestionsForStudent is what the exam-taking page fetches while
+// answering -- dto.StudentQuestion has no answer_key/clo_code fields,
+// unlike the grading-side QuestionForGrading. Requires an in_progress
+// attempt (created by StartAttempt) and returns that attempt's persisted
+// question/option order, never a fresh randomization -- a refresh must
+// always see the exact same form.
 func (s *Service) ListExamQuestionsForStudent(ctx context.Context, userID, examID uuid.UUID) ([]dto.StudentQuestion, error) {
-	_, _, err := s.verifyStudentAccess(ctx, userID, examID)
+	_, student, err := s.verifyStudentAccess(ctx, userID, examID)
 	if err != nil {
 		return nil, err
 	}
-	questions, err := s.repo.FetchQuestionsForStudent(ctx, examID)
+	attempt, err := s.repo.FindInProgressAttempt(ctx, student.ID, examID)
+	if err != nil {
+		return nil, apperrors.Internal(err)
+	}
+	if attempt == nil {
+		return nil, apperrors.Conflict("start the exam (POST .../start) before viewing its questions")
+	}
+	questions, err := s.repo.FetchAttemptQuestions(ctx, attempt.AttemptID)
 	if err != nil {
 		return nil, apperrors.Internal(err)
 	}
@@ -92,18 +103,64 @@ func (s *Service) ListQuestionsForGrading(ctx context.Context, userID, examID uu
 // everything else (essay/short_answer/long_answer/calculation, or an MCQ
 // with no answer key) is left pending -- inferred from marks_awarded IS
 // NULL, there's no status column for this.
+//
+// Requires an in_progress attempt (created by StartAttempt) -- attempts
+// are no longer created here. Order matches Part 13's transactional
+// contract: verify ownership/state/server-time (readonly, safe to do
+// before the atomic freeze), THEN freeze via MarkAttemptSubmitted (the
+// actual concurrency guard -- WHERE status='in_progress' means exactly
+// one concurrent submit can win), THEN persist answers/grade. A losing
+// concurrent request, or a network-retried request carrying the same
+// idempotencyKey, gets the SAME result back rather than an error or a
+// second grading pass.
 func (s *Service) SubmitExam(ctx context.Context, userID, examID uuid.UUID, req dto.SubmitExamRequest) (*dto.SubmitExamResponse, error) {
 	_, student, err := s.verifyStudentAccess(ctx, userID, examID)
 	if err != nil {
 		return nil, err
 	}
 
-	existing, err := s.repo.FindAttempt(ctx, student.ID, examID)
+	attempt, err := s.repo.FindInProgressAttempt(ctx, student.ID, examID)
 	if err != nil {
 		return nil, apperrors.Internal(err)
 	}
-	if existing != nil {
-		return nil, apperrors.Conflict("you have already submitted this exam")
+	if attempt == nil {
+		if req.IdempotencyKey != nil {
+			if resp, found, err := s.repo.FetchSubmitResultByIdempotencyKey(ctx, student.ID, examID, *req.IdempotencyKey); err != nil {
+				return nil, apperrors.Internal(err)
+			} else if found {
+				return resp, nil
+			}
+		}
+		return nil, apperrors.Conflict("no exam session in progress -- start the exam first, or it has already been submitted")
+	}
+
+	// A request landing at/after expires_at is graded and finalized the
+	// same as any other submit, just tagged time_expired instead of
+	// student_submit -- rejecting it here would only force the student
+	// to wait out the auto-submit ticker's own poll interval for a
+	// request that already carries their real, intended answers. The
+	// atomic MarkAttemptSubmitted guard below is what actually prevents
+	// this from racing the ticker (or a concurrent duplicate submit),
+	// not this check.
+	submissionReason := "student_submit"
+	if attempt.ExpiresAt != nil && !time.Now().UTC().Before(*attempt.ExpiresAt) {
+		submissionReason = "time_expired"
+	}
+
+	assigned, err := s.repo.FetchAttemptQuestions(ctx, attempt.AttemptID)
+	if err != nil {
+		return nil, apperrors.Internal(err)
+	}
+	assignedIDs := make(map[uuid.UUID]bool, len(assigned))
+	for _, q := range assigned {
+		if id, err := uuid.Parse(q.ID); err == nil {
+			assignedIDs[id] = true
+		}
+	}
+	for _, a := range req.Answers {
+		if !assignedIDs[a.QuestionID] {
+			return nil, apperrors.BadRequest(fmt.Sprintf("question %s is not assigned to this attempt", a.QuestionID))
+		}
 	}
 
 	questions, err := s.repo.FetchQuestionsForGrading(ctx, examID)
@@ -115,18 +172,21 @@ func (s *Service) SubmitExam(ctx context.Context, userID, examID uuid.UUID, req 
 		questionsByID[q.ID] = q
 	}
 
-	attemptID, err := s.repo.CreateAttempt(ctx, student.ID, examID, student.SchoolID, false)
+	ok, err := s.repo.MarkAttemptSubmitted(ctx, attempt.AttemptID, submissionReason, req.IdempotencyKey)
 	if err != nil {
 		return nil, apperrors.Internal(err)
+	}
+	if !ok {
+		// Lost the freeze race to a concurrent submit for this same
+		// attempt -- return its result rather than erroring or
+		// re-grading.
+		return s.repo.FetchSubmitSummary(ctx, attempt.AttemptID)
 	}
 
 	answers := make([]repository.GradedAnswer, 0, len(req.Answers))
 	graded, pending := 0, 0
 	for _, a := range req.Answers {
-		q, ok := questionsByID[a.QuestionID]
-		if !ok {
-			return nil, apperrors.BadRequest(fmt.Sprintf("question %s is not part of this exam", a.QuestionID))
-		}
+		q := questionsByID[a.QuestionID]
 		ga := gradeMCQOrPend(q, a.Response)
 		ga.TimeSpentSecs = a.TimeSpentSecs
 		answers = append(answers, ga)
@@ -137,26 +197,26 @@ func (s *Service) SubmitExam(ctx context.Context, userID, examID uuid.UUID, req 
 		}
 	}
 
-	if err := s.repo.SaveStudentAnswers(ctx, attemptID, student.ID, student.SchoolID, answers, nil); err != nil {
+	if err := s.repo.SaveStudentAnswers(ctx, attempt.AttemptID, student.ID, student.SchoolID, answers, nil); err != nil {
 		return nil, apperrors.Internal(err)
 	}
-	if err := s.repo.RecomputeAttemptTotals(ctx, attemptID); err != nil {
+	if err := s.repo.RecomputeAttemptTotals(ctx, attempt.AttemptID); err != nil {
 		return nil, apperrors.Internal(err)
 	}
 
 	resp := &dto.SubmitExamResponse{
-		AttemptID:           attemptID,
+		AttemptID:           attempt.AttemptID,
 		GradedCount:         graded,
 		PendingGradingCount: pending,
 	}
 	if pending == 0 {
-		total, pct, passed, err := s.repo.FetchAttemptTotals(ctx, attemptID)
+		total, pct, passed, err := s.repo.FetchAttemptTotals(ctx, attempt.AttemptID)
 		if err != nil {
 			return nil, apperrors.Internal(err)
 		}
 		resp.TotalScore, resp.Percentage, resp.Passed = total, pct, passed
-		s.enqueueGapAnalysis(ctx, attemptID)
-		s.recordLearningEventsAndTrace(ctx, attemptID)
+		s.enqueueGapAnalysis(ctx, attempt.AttemptID)
+		s.recordLearningEventsAndTrace(ctx, attempt.AttemptID)
 	}
 	return resp, nil
 }

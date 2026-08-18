@@ -1,3 +1,4 @@
+import { useMemo } from 'react'
 import { useQueries, useQuery } from '@tanstack/react-query'
 import { AlertTriangle, GraduationCap, Info, Landmark, Lightbulb, School as SchoolIcon, Sparkles, Users } from 'lucide-react'
 
@@ -5,7 +6,6 @@ import { AppShell } from '@components/layout'
 import {
   DistributionDonutChart,
   ManagementTableCard,
-  PerformanceAreaChart,
   ScheduleCalendarWidget,
   StatMetricCard,
 } from '@components/dashboard'
@@ -14,38 +14,6 @@ import { getNationalInsights, getMinistryOverview, getRegionStats, listRegions }
 import { queryKeys } from '@lib/query/keys'
 import { formatNumber, formatPercent } from '@lib/utils/format'
 import type { InsightAlert, InsightRecommendation } from '@/types/api'
-
-const MOCK_MINISTRY_PERFORMANCE = [
-  { label: 'Jan', value: 72 },
-  { label: 'Feb', value: 76 },
-  { label: 'Mar', value: 80 },
-  { label: 'Apr', value: 84 },
-  { label: 'May', value: 88 },
-  { label: 'June', value: 93 },
-]
-
-const MOCK_MINISTRY_DONUT = [
-  { name: 'National Mastery', value: 78, color: '#2d2d2e' },
-  { name: 'Regional Gaps', value: 16, color: '#6b7280' },
-  { name: 'Pending Resync', value: 6, color: '#e5e7eb' },
-]
-
-const MOCK_MINISTRY_SCHEDULE = [
-  {
-    id: 'mn1',
-    title: 'National Curriculum Oversight',
-    time: '10:00 AM - 01:00 PM',
-    subtitle: 'Ministry of Education Admin',
-    category: 'schedule' as const,
-  },
-  {
-    id: 'mn2',
-    title: 'Neo4j Prerequisite Resync',
-    time: '04:00 PM (Today)',
-    subtitle: '11 Ethiopian Regions',
-    category: 'upcoming' as const,
-  },
-]
 
 interface RegionRowItem {
   id: string
@@ -75,17 +43,45 @@ export function MinistryDashboardPage() {
       id: region.id,
       name: region.name,
       code: region.code,
-      schoolCount: stats ? formatNumber(stats.school_count) : '18',
-      studentCount: stats ? formatNumber(stats.student_count) : '4,250',
-      teacherCount: stats ? formatNumber(stats.teacher_count) : '210',
-      avgScore: stats ? formatPercent(stats.avg_assessment_score) : '84.2%',
+      schoolCount: stats ? formatNumber(stats.school_count) : '—',
+      studentCount: stats ? formatNumber(stats.student_count) : '—',
+      teacherCount: stats ? formatNumber(stats.teacher_count) : '—',
+      avgScore: stats ? formatPercent(stats.avg_assessment_score ?? 0) : '—',
     }
-  }) ?? [
-    { id: 'r1', name: 'Addis Ababa', code: 'AA', schoolCount: '42', studentCount: '12,400', teacherCount: '620', avgScore: '86.4%' },
-    { id: 'r2', name: 'Oromia', code: 'OR', schoolCount: '128', studentCount: '34,200', teacherCount: '1,450', avgScore: '81.2%' },
-    { id: 'r3', name: 'Amhara', code: 'AM', schoolCount: '96', studentCount: '28,100', teacherCount: '1,120', avgScore: '83.0%' },
-    { id: 'r4', name: 'Sidama', code: 'SD', schoolCount: '34', studentCount: '9,800', teacherCount: '410', avgScore: '82.5%' },
-  ]
+  }) ?? []
+
+  const donutSegments = useMemo(() => {
+    const statsLoaded = regionStats.filter((q) => q.data)
+    if (statsLoaded.length === 0) return []
+    const high = statsLoaded.filter((q) => (q.data!.avg_assessment_score ?? 0) >= 80).length
+    const mid = statsLoaded.filter((q) => { const m = q.data!.avg_assessment_score ?? 0; return m >= 65 && m < 80 }).length
+    const low = statsLoaded.filter((q) => (q.data!.avg_assessment_score ?? 0) < 65).length
+    return [
+      { name: 'High Performing', value: high, color: '#2d2d2e' },
+      { name: 'On Track', value: mid, color: '#6b7280' },
+      { name: 'Needs Support', value: low, color: '#e5e7eb' },
+    ].filter((s) => s.value > 0)
+  }, [regionStats])
+
+  const scheduleItems = useMemo(() => {
+    return (regions.data ?? []).slice(0, 3).map((r, i) => {
+      const stats = regionStats[i]?.data
+      const mastery = stats?.avg_assessment_score ?? 0
+      return {
+        id: r.id,
+        title: `${r.name} — ${mastery > 0 ? `${mastery.toFixed(0)}% mastery` : 'Stats loading'}`,
+        time: `${stats ? formatNumber(stats.school_count) + ' schools' : '…'}`,
+        subtitle: r.code,
+        category: 'upcoming' as const,
+      }
+    })
+  }, [regions.data, regionStats])
+
+  const nationalAvgMastery = useMemo(() => {
+    const loaded = regionStats.filter((q) => q.data)
+    if (loaded.length === 0) return 0
+    return loaded.reduce((s, q) => s + (q.data!.avg_assessment_score ?? 0), 0) / loaded.length
+  }, [regionStats])
 
   const tableColumns = [
     {
@@ -173,28 +169,45 @@ export function MinistryDashboardPage() {
         {/* Charts & Schedule Asymmetric Grid */}
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-12">
           <div className="lg:col-span-5">
-            <PerformanceAreaChart
-              title="National Student Performance"
-              subtitle="Monthly Average Mastery Score Across All Regions"
-              data={MOCK_MINISTRY_PERFORMANCE}
-            />
+            <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm h-full">
+              <h3 className="font-bold text-sm text-slate-900">National Snapshot</h3>
+              <p className="text-xs text-slate-500 mt-0.5">Aggregated from all region stats</p>
+              <div className="mt-4 grid grid-cols-2 gap-3">
+                <div className="rounded-xl bg-slate-50 p-3 border border-slate-100">
+                  <p className="text-xs text-slate-500">Regions</p>
+                  <p className="text-xl font-bold text-slate-900 mt-0.5">{overview.data ? formatNumber(overview.data.total_regions) : '—'}</p>
+                </div>
+                <div className="rounded-xl bg-slate-50 p-3 border border-slate-100">
+                  <p className="text-xs text-slate-500">Schools</p>
+                  <p className="text-xl font-bold text-slate-900 mt-0.5">{overview.data ? formatNumber(overview.data.total_schools) : '—'}</p>
+                </div>
+                <div className="rounded-xl bg-slate-50 p-3 border border-slate-100">
+                  <p className="text-xs text-slate-500">Students</p>
+                  <p className="text-xl font-bold text-slate-900 mt-0.5">{overview.data ? formatNumber(overview.data.total_students) : '—'}</p>
+                </div>
+                <div className="rounded-xl bg-teal-50 p-3 border border-teal-100">
+                  <p className="text-xs text-teal-600">Avg Mastery</p>
+                  <p className="text-xl font-bold text-teal-800 mt-0.5">{nationalAvgMastery > 0 ? `${nationalAvgMastery.toFixed(1)}%` : '—'}</p>
+                </div>
+              </div>
+            </div>
           </div>
 
           <div className="lg:col-span-4">
             <DistributionDonutChart
               title="National Quality Distribution"
-              centerPercentage="78%"
+              centerPercentage={nationalAvgMastery > 0 ? `${nationalAvgMastery.toFixed(0)}%` : '—'}
               centerLabel="National Avg"
-              totalValue="83.8% Overall"
-              segments={MOCK_MINISTRY_DONUT}
+              totalValue={regions.data ? `${regions.data.length} Regions` : 'Loading…'}
+              segments={donutSegments}
               dateLabel="National Scale"
             />
           </div>
 
           <div className="lg:col-span-3">
             <ScheduleCalendarWidget
-              monthLabel="April 2026"
-              scheduleItems={MOCK_MINISTRY_SCHEDULE}
+              monthLabel={new Date().toLocaleDateString(undefined, { month: 'long', year: 'numeric' })}
+              scheduleItems={scheduleItems}
             />
           </div>
         </div>

@@ -1,119 +1,122 @@
 import { Link, useNavigate, useRouterState } from '@tanstack/react-router'
-import {
-  ChevronDown,
-  GraduationCap,
-  LogOut,
-  Menu,
-  MessageSquare,
-  Search,
-  X,
-} from 'lucide-react'
+import { Command, Globe, GraduationCap, LogOut, Menu, Search, X } from 'lucide-react'
 import { useState } from 'react'
 import type { ReactNode } from 'react'
 
+import { logout } from '@lib/api/endpoints'
 import { cn } from '@lib/utils/cn'
 import { useAuthStore } from '@stores/auth.store'
 
+import { CommandPalette } from '@components/shared/CommandPalette'
 import { NotificationBell } from './NotificationBell'
-import { getNavItems, ROLE_LABELS } from './nav-config'
+import { getNavItems, NAV_SECTIONS, ROLE_LABELS } from './nav-config'
 
 export interface AppShellProps {
+  /** Optional slot for primary page-level action buttons shown in the top bar. */
+  actions?: ReactNode
+  /** Unused in this layout — kept so existing call sites don't need updating. */
   title?: string
   description?: string
-  actions?: ReactNode
   children: ReactNode
 }
 
-export function AppShell({ title, description, actions, children }: AppShellProps) {
+export function AppShell({ actions, children }: AppShellProps) {
   const navigate = useNavigate()
   const user = useAuthStore((s) => s.user)
   const clearAuth = useAuthStore((s) => s.clearAuth)
   const pathname = useRouterState({ select: (s) => s.location.pathname })
-  const [mobileNavOpen, setMobileNavOpen] = useState(false)
-  const [searchQuery, setSearchQuery] = useState('')
+  const [sidebarOpen, setSidebarOpen] = useState(false)
+  const [lang, setLang] = useState<'EN' | 'AM'>('EN')
+  const [commandOpen, setCommandOpen] = useState(false)
 
   const navItems = getNavItems(user?.role)
 
   const handleLogout = () => {
-    // Must revoke server-side too -- clearAuth() alone can't touch the
-    // HttpOnly session cookies (checklist 11.1), see endpoints.ts's
-    // logout() for why.
     void logout()
     clearAuth()
     void navigate({ to: '/login' })
   }
 
-  const sections = ['General', 'Reports', 'Settings'] as const
+  const initials =
+    user?.full_name
+      ?.split(' ')
+      .slice(0, 2)
+      .map((n) => n[0])
+      .join('') ?? 'U'
 
   return (
-    <div className="flex min-h-screen bg-[#f3f4f6] text-gray-900 antialiased font-sans">
-      {/* Sidebar Navigation */}
+    <div className="flex h-screen overflow-hidden bg-gray-50">
+      {/* Global Command Palette */}
+      <CommandPalette isOpen={commandOpen} onClose={() => setCommandOpen(false)} />
+
+      {/* ── Mobile overlay ──────────────────────────────────────────── */}
+      {sidebarOpen && (
+        <button
+          type="button"
+          aria-label="Close navigation"
+          className="fixed inset-0 z-30 bg-gray-900/40 lg:hidden"
+          onClick={() => setSidebarOpen(false)}
+        />
+      )}
+
+      {/* ── Sidebar ─────────────────────────────────────────────────── */}
       <aside
         className={cn(
-          'fixed inset-y-0 left-0 z-40 flex w-64 flex-col border-r border-gray-200/80 bg-white shadow-sm transition-transform duration-200 lg:static lg:translate-x-0',
-          mobileNavOpen ? 'translate-x-0' : '-translate-x-full',
+          'fixed inset-y-0 left-0 z-40 flex w-64 flex-col bg-white border-r border-gray-200 transition-transform duration-200 lg:static lg:translate-x-0',
+          sidebarOpen ? 'translate-x-0' : '-translate-x-full',
         )}
       >
-        {/* Brand Header */}
-        <div className="flex h-20 items-center gap-3 border-b border-gray-100 px-6">
-          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gray-900 text-white shadow-sm">
-            <GraduationCap className="h-5 w-5" />
+        {/* Logo */}
+        <div className="flex h-14 shrink-0 items-center gap-2.5 border-b border-gray-100 px-5">
+          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-teal-700">
+            <GraduationCap className="h-4 w-4 text-white" aria-hidden />
           </div>
-          <div>
-            <span className="font-display text-xl font-extrabold tracking-tight text-gray-900">
-              EduGraph
-            </span>
-            <span className="block text-[10px] font-semibold uppercase tracking-wider text-gray-400">
-              AI Intelligence
-            </span>
-          </div>
+          <span className="text-sm font-bold tracking-tight text-gray-900">EduGraph AI</span>
         </div>
 
-        {/* Grouped Sidebar Navigation */}
-        <div className="flex-1 space-y-6 overflow-y-auto px-4 py-6">
-          {sections.map((sec) => {
-            const items = navItems.filter((i) => i.section === sec)
-            if (items.length === 0) return null
-
+        {/* Navigation */}
+        <nav className="flex-1 overflow-y-auto px-3 py-4" aria-label="Main navigation">
+          {NAV_SECTIONS.map((section) => {
+            const items = navItems.filter((i) => i.section === section)
+            if (!items.length) return null
             return (
-              <div key={sec} className="space-y-2">
-                <p className="px-3 text-[11px] font-semibold uppercase tracking-wider text-gray-400">
-                  {sec}
+              <div key={section} className="mb-5">
+                <p className="mb-1.5 px-2.5 text-[10px] font-semibold uppercase tracking-widest text-gray-400">
+                  {section}
                 </p>
-                <div className="space-y-1">
+                <div className="space-y-0.5">
                   {items.map((item) => {
                     const active = pathname === item.to
                     const Icon = item.icon
                     return (
                       <Link
-                        key={item.label}
+                        key={item.to}
                         // eslint-disable-next-line @typescript-eslint/no-explicit-any
                         to={item.to as any}
-                        onClick={() => setMobileNavOpen(false)}
+                        onClick={() => setSidebarOpen(false)}
                         className={cn(
-                          'group flex items-center justify-between rounded-xl px-3.5 py-2.5 text-xs font-semibold transition-all duration-150',
+                          'flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm font-medium transition-colors',
                           active
-                            ? 'bg-gray-900 text-white shadow-sm'
+                            ? 'bg-teal-50 text-teal-800 font-bold'
                             : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900',
                         )}
+                        aria-current={active ? 'page' : undefined}
                       >
-                        <div className="flex items-center gap-3">
-                          <Icon
-                            className={cn(
-                              'h-4 w-4 transition-colors',
-                              active ? 'text-white' : 'text-gray-400 group-hover:text-gray-900',
-                            )}
-                            aria-hidden="true"
-                          />
-                          <span>{item.label}</span>
-                        </div>
-                        {item.badge && (
+                        <Icon
+                          className={cn(
+                            'h-4 w-4 shrink-0',
+                            active ? 'text-teal-700' : 'text-gray-400',
+                          )}
+                          aria-hidden
+                        />
+                        <span className="truncate">{item.label}</span>
+                        {item.badge != null && (
                           <span
                             className={cn(
-                              'flex h-5 w-5 items-center justify-center rounded-full text-[10px] font-bold',
+                              'ml-auto flex h-5 min-w-[20px] items-center justify-center rounded-full px-1.5 text-[10px] font-bold',
                               active
-                                ? 'bg-white text-gray-900'
-                                : 'bg-gray-100 text-gray-700 group-hover:bg-gray-200',
+                                ? 'bg-teal-100 text-teal-800'
+                                : 'bg-gray-100 text-gray-600',
                             )}
                           >
                             {item.badge}
@@ -126,115 +129,96 @@ export function AppShell({ title, description, actions, children }: AppShellProp
               </div>
             )
           })}
-        </div>
+        </nav>
 
-        {/* User Profile Footer Tile */}
-        <div className="border-t border-gray-100 p-4">
-          <div className="flex items-center gap-3 rounded-xl bg-gray-50 p-2.5">
-            <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-gray-900 text-xs font-bold text-white">
-              {user?.full_name?.charAt(0) ?? 'U'}
+        {/* User footer */}
+        <div className="shrink-0 border-t border-gray-100 p-3">
+          <div className="flex items-center gap-2.5 rounded-lg px-2 py-2">
+            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-teal-800 text-xs font-bold text-white">
+              {initials}
             </div>
             <div className="min-w-0 flex-1">
-              <p className="truncate text-xs font-bold text-gray-900">{user?.full_name}</p>
-              <p className="text-[11px] text-gray-500 font-medium">{user ? ROLE_LABELS[user.role] : ''}</p>
+              <p className="truncate text-xs font-semibold text-gray-900">{user?.full_name}</p>
+              <p className="truncate text-[11px] text-gray-500">
+                {user ? ROLE_LABELS[user.role] : ''}
+              </p>
             </div>
             <button
               type="button"
               onClick={handleLogout}
-              title="Sign Out"
-              className="rounded-lg p-1.5 text-gray-400 hover:bg-gray-200/80 hover:text-gray-900 transition-colors"
+              aria-label="Sign out"
+              title="Sign out"
+              className="rounded-md p-1.5 text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-700 focus:outline-none focus:ring-2 focus:ring-teal-500"
             >
-              <LogOut className="h-4 w-4" />
+              <LogOut className="h-4 w-4" aria-hidden />
             </button>
           </div>
         </div>
       </aside>
 
-      {/* Mobile Overlay */}
-      {mobileNavOpen && (
-        <button
-          type="button"
-          aria-label="Close navigation"
-          className="fixed inset-0 z-30 bg-gray-900/30 backdrop-blur-sm lg:hidden"
-          onClick={() => setMobileNavOpen(false)}
-        />
-      )}
+      {/* ── Main area ───────────────────────────────────────────────── */}
+      <div className="flex flex-1 flex-col overflow-hidden">
+        {/* Top bar */}
+        <header className="relative flex h-14 shrink-0 items-center gap-3 border-b border-gray-200 bg-white px-4 sm:px-6">
+          {/* Mobile sidebar toggle */}
+          <button
+            type="button"
+            aria-label={sidebarOpen ? 'Close menu' : 'Open menu'}
+            className="rounded-lg p-1.5 text-gray-500 transition-colors hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-teal-500 lg:hidden"
+            onClick={() => setSidebarOpen((v) => !v)}
+          >
+            {sidebarOpen ? (
+              <X className="h-5 w-5" aria-hidden />
+            ) : (
+              <Menu className="h-5 w-5" aria-hidden />
+            )}
+          </button>
 
-      {/* Main Content Body */}
-      <div className="flex min-h-screen flex-1 flex-col overflow-x-hidden">
-        {/* Sticky Top Header Bar */}
-        <header className="sticky top-0 z-20 flex h-20 items-center justify-between border-b border-gray-200/80 bg-white/90 px-6 backdrop-blur-md">
-          {/* Left: Mobile Toggle & Page Greeting Title */}
-          <div className="flex items-center gap-4">
-            <button
-              type="button"
-              className="rounded-xl border border-gray-200 p-2 text-gray-600 hover:bg-gray-100 lg:hidden"
-              onClick={() => setMobileNavOpen((v) => !v)}
-              aria-label="Toggle navigation"
-            >
-              {mobileNavOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
-            </button>
-            <div>
-              <h1 className="font-display text-xl font-bold tracking-tight text-gray-900 flex items-center gap-2">
-                {title ?? `Hello, ${user?.full_name?.split(' ')[0] ?? 'User'} 👋`}
-              </h1>
-              <p className="text-xs font-medium text-gray-500">
-                {description ?? 'Welcome to the EduGraph AI Management Dashboard.'}
-              </p>
-            </div>
-          </div>
+          {/* Command Palette Launcher */}
+          <button
+            type="button"
+            onClick={() => setCommandOpen(true)}
+            className="flex items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 py-1.5 px-3 text-xs text-slate-500 hover:bg-white hover:border-slate-300 transition-all w-64"
+          >
+            <Search className="h-3.5 w-3.5 text-slate-400" />
+            <span className="truncate">Type a command or search...</span>
+            <span className="ml-auto hidden sm:flex items-center gap-0.5 rounded bg-white px-1.5 py-0.5 text-[10px] font-mono border border-slate-200 text-slate-400">
+              <Command className="h-2.5 w-2.5" />K
+            </span>
+          </button>
 
-          {/* Right: Search Bar, Notifications & User Avatar Pill */}
-          <div className="flex items-center gap-4">
-            {/* Search Input Bar matching Inspo */}
-            <div className="relative hidden md:block w-64 lg:w-80">
-              <Search className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
-              <input
-                type="text"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Search anything..."
-                className="w-full rounded-xl border border-gray-200/80 bg-gray-50/80 pl-10 pr-4 py-2 text-xs font-medium text-gray-900 placeholder-gray-400 outline-none transition-all focus:border-gray-900 focus:bg-white focus:ring-1 focus:ring-gray-900"
-              />
-            </div>
-
-            {/* Quick Actions / Page Actions */}
+          {/* Right-side controls */}
+          <div className="ml-auto flex items-center gap-2">
+            {/* Page-level actions slot */}
             {actions}
 
-            {/* Message Icon Button */}
+            {/* Language toggle */}
             <button
               type="button"
-              className="relative hidden sm:flex h-9 w-9 items-center justify-center rounded-xl border border-gray-200/80 bg-gray-50 text-gray-600 hover:bg-gray-100 hover:text-gray-900 transition-colors"
+              onClick={() => setLang((l) => (l === 'EN' ? 'AM' : 'EN'))}
+              aria-label={`Switch to ${lang === 'EN' ? 'Amharic' : 'English'}`}
+              className="flex items-center gap-1.5 rounded-lg border border-gray-200 px-2.5 py-1.5 text-xs font-semibold text-gray-600 transition-colors hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-teal-500"
             >
-              <MessageSquare className="h-4 w-4" />
+              <Globe className="h-3.5 w-3.5" aria-hidden />
+              {lang}
             </button>
 
-            {/* Notification Bell Popover */}
+            {/* Notification bell -- self-contained (own Radix dropdown
+                trigger + panel, real API data via listNotifications).
+                Previously wrapped in a second <button>, which put a
+                <button> inside a <button> (invalid DOM nesting) and paired
+                it with NotificationCenter, a fully mock-data component
+                (MOCK_NOTIFICATIONS, no API call) -- removed. */}
             <NotificationBell />
-
-            {/* User Profile Pill Capsule */}
-            <div className="hidden sm:flex items-center gap-2.5 rounded-xl border border-gray-200/80 bg-gray-50/80 p-1.5 pr-3">
-              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-gray-900 text-xs font-bold text-white">
-                {user?.full_name?.charAt(0) ?? 'A'}
-              </div>
-              <div className="text-left">
-                <p className="text-xs font-bold text-gray-900 leading-tight">
-                  {user?.full_name ?? 'User Name'}
-                </p>
-                <p className="text-[10px] font-medium text-gray-500 leading-tight capitalize">
-                  {user ? ROLE_LABELS[user.role] : 'Admin'}
-                </p>
-              </div>
-              <ChevronDown className="h-3.5 w-3.5 text-gray-400" />
-            </div>
           </div>
         </header>
 
-        {/* Dynamic Page Content */}
-        <main className="flex-1 px-4 py-6 sm:px-6 lg:px-8 space-y-6 max-w-7xl mx-auto w-full">
+        {/* Scrollable page content */}
+        <main className="flex-1 overflow-y-auto p-6">
           {children}
         </main>
       </div>
     </div>
   )
 }
+

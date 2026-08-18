@@ -27,18 +27,20 @@ type UploadExamResponse struct {
 // ExamStatus backs GET /api/v1/exams/:id -- the teacher-facing equivalent
 // of curriculum's JobStatus, polled while parsing is in progress.
 type ExamStatus struct {
-	ExamID        uuid.UUID `json:"examId"`
-	Status        string    `json:"status"`
-	Title         string    `json:"title"`
-	SubjectCode   string    `json:"subjectCode"`
-	GradeLevel    int       `json:"gradeLevel"`
-	ExamScope     string    `json:"examScope"`
-	UnitNumbers   []int     `json:"unitNumbers"`
-	AcademicYear  string    `json:"academicYear"`
-	TotalMarks    int       `json:"totalMarks"`
-	QuestionCount int       `json:"questionCount"`
-	ParseError    *string   `json:"parseError,omitempty"`
-	CreatedAt     time.Time `json:"createdAt"`
+	ExamID           uuid.UUID `json:"examId"`
+	Status           string    `json:"status"`
+	Title            string    `json:"title"`
+	SubjectCode      string    `json:"subjectCode"`
+	GradeLevel       int       `json:"gradeLevel"`
+	ExamScope        string    `json:"examScope"`
+	UnitNumbers      []int     `json:"unitNumbers"`
+	AcademicYear     string    `json:"academicYear"`
+	TotalMarks       int       `json:"totalMarks"`
+	QuestionCount    int       `json:"questionCount"`
+	ParseError       *string   `json:"parseError,omitempty"`
+	CreatedAt        time.Time `json:"createdAt"`
+	TimeLimitMinutes *int      `json:"timeLimitMinutes,omitempty"`
+	AttemptLimit     int       `json:"attemptLimit"`
 	// ValidationReport is nil until Capability 2B's POST .../validate has
 	// been called at least once -- GET surfaces the last computed report so
 	// there's no separate GET-report endpoint to keep in sync.

@@ -413,6 +413,8 @@ export interface ExamStatus {
   parseError?: string
   createdAt: string
   validationReport?: ValidationReport
+  timeLimitMinutes?: number
+  attemptLimit: number
 }
 
 // Capability 2D: correct a wrong subject/grade/exam-type/unit-range
@@ -519,6 +521,36 @@ export interface SubmitExamResponse {
   totalScore?: number
   percentage?: number
   passed?: boolean
+}
+
+// ── Exam attempt lifecycle (server-authoritative session) ──────────
+
+/** POST /exams/{id}/start -- creates or resumes the caller's exam
+ * session. Calling it again while an attempt is still open returns the
+ * exact same attemptId/expiresAt/question order, never a new one. */
+export interface StartAttemptResponse {
+  attemptId: string
+  examId: string
+  attemptNumber: number
+  startedAt: string
+  expiresAt?: string
+  timeLimitMinutes?: number
+  questions: ExamQuestion[]
+}
+
+export type IntegrityEventType =
+  | 'tab_hidden'
+  | 'tab_visible'
+  | 'fullscreen_entered'
+  | 'fullscreen_exited'
+  | 'connection_lost'
+  | 'connection_restored'
+
+export interface IntegrityEventInput {
+  eventType: IntegrityEventType
+  occurredAt: string
+  sequenceNumber: number
+  metadata?: Record<string, unknown>
 }
 
 /** value is an MCQ option letter (e.g. "B") when the question is mcq, or
@@ -800,7 +832,8 @@ export interface CareerPathResponse {
 export interface CreateCareerPathRequest {
   title: string
   description?: string
-  required_subjects?: string[]
+  sector: string
+  minEduLevel: string
 }
 
 export interface CareerMatchResponse {
