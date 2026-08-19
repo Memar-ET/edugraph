@@ -20,6 +20,9 @@ out/
 !.env.staging
 !.env.school-box.example
 
+# Local machine overrides (e.g. bind-mounting a personal Ollama model path)
+docker-compose.override.yml
+
 # Go
 backend/vendor/
 *.exe
@@ -80,3 +83,10 @@ frontend/tests/e2e/.seeded-exam.json
 *.key
 *.crt
 secrets/
+
+# Caches & generated tool outputs
+graphify-out/
+.wheelhouse/
+.wheelhouse-requirements.txt
+.pydeps/
+

@@ -10,6 +10,47 @@ export interface Envelope<T> {
   meta?: unknown
 }
 
+// ── Ministry analytics (backend/internal/ministry/dto) ──────────
+
+export interface WeakTopic {
+  topic_id: string
+  topic_title: string
+  avg_mastery: number
+  affected_students: number
+}
+
+export interface UnderperformingSchool {
+  school_id: string
+  school_name: string
+  school_code: string
+  quality_score: number
+  mastery_rate: number
+  flagged_topics_count: number
+  top_weak_topics: WeakTopic[]
+}
+
+export interface UnderperformingResponse {
+  schools: UnderperformingSchool[]
+}
+
+export interface InsightAlert {
+  severity: 'critical' | 'warning' | 'info'
+  message: string
+}
+
+export interface InsightRecommendation {
+  priority: 'high' | 'medium' | 'low'
+  text: string
+}
+
+export interface NationalInsightsResponse {
+  headline: string
+  alerts: InsightAlert[]
+  recommendations: InsightRecommendation[]
+  trend_summary: string
+  ai_configured: boolean
+}
+
 /** Pagination metadata attached by middleware.WriteJSONMeta (pkg/pagination.Meta). */
 export interface PaginationMeta {
   page: number
@@ -183,6 +224,19 @@ export interface TopicListItem {
 
 export type PrerequisiteInferMethod = 'explicit' | 'ai_inferred' | 'manual' | 'moe_document'
 
+// EG-GCKT Milestone 0 (spec section 6.2): typed prerequisite edges.
+// 'requires'/'strongly_requires' are hard dependencies (cycle-checked,
+// walked by root-cause/study-plan/heatmap traversals); the rest are soft
+// associations.
+export type PrerequisiteEdgeType =
+  | 'requires'
+  | 'strongly_requires'
+  | 'recommended_before'
+  | 'related_to'
+  | 'similar_to'
+  | 'supports'
+  | 'alternative_to'
+
 export interface PrerequisiteLink {
   topicId: string
   topicTitle: string
@@ -193,12 +247,21 @@ export interface PrerequisiteLink {
   isCrossGrade: boolean
   inferMethod: PrerequisiteInferMethod
   isValidated: boolean
+  edgeType: PrerequisiteEdgeType
+  confidence?: number
+  evidence?: string
+  createdBy?: string
+  createdByModel?: string
+  curriculumVersion?: string
 }
 
 export interface AddPrerequisiteRequest {
   prerequisiteTopicId: string
   weight?: number
   inferMethod?: PrerequisiteInferMethod
+  edgeType?: PrerequisiteEdgeType
+  confidence?: number
+  evidence?: string
 }
 
 export interface AddPrerequisiteResponse {
@@ -210,6 +273,16 @@ export interface AddPrerequisiteResponse {
 export interface ResyncPrerequisitesResponse {
   synced: number
   failed: number
+}
+
+export interface PrerequisiteReviewHistoryEntry {
+  id: string
+  action: string
+  previousValues?: string
+  newValues?: string
+  reviewedBy?: string
+  reviewedAt: string
+  notes?: string
 }
 
 // ── Curriculum versioning (backend/internal/curriculum/dto/versions.go) ──
@@ -340,6 +413,8 @@ export interface ExamStatus {
   parseError?: string
   createdAt: string
   validationReport?: ValidationReport
+  timeLimitMinutes?: number
+  attemptLimit: number
 }
 
 // Capability 2D: correct a wrong subject/grade/exam-type/unit-range
@@ -424,6 +499,19 @@ export interface AnswerInput {
 
 export interface SubmitExamRequest {
   answers: AnswerInput[]
+  idempotencyKey?: string
+}
+
+export interface DraftAnswer {
+  questionId: string
+  response: string
+  savedAt: string
+}
+
+export interface ExamDraftResponse {
+  examId: string
+  answers: DraftAnswer[]
+  savedAt: string
 }
 
 export interface SubmitExamResponse {
@@ -433,6 +521,36 @@ export interface SubmitExamResponse {
   totalScore?: number
   percentage?: number
   passed?: boolean
+}
+
+// ── Exam attempt lifecycle (server-authoritative session) ──────────
+
+/** POST /exams/{id}/start -- creates or resumes the caller's exam
+ * session. Calling it again while an attempt is still open returns the
+ * exact same attemptId/expiresAt/question order, never a new one. */
+export interface StartAttemptResponse {
+  attemptId: string
+  examId: string
+  attemptNumber: number
+  startedAt: string
+  expiresAt?: string
+  timeLimitMinutes?: number
+  questions: ExamQuestion[]
+}
+
+export type IntegrityEventType =
+  | 'tab_hidden'
+  | 'tab_visible'
+  | 'fullscreen_entered'
+  | 'fullscreen_exited'
+  | 'connection_lost'
+  | 'connection_restored'
+
+export interface IntegrityEventInput {
+  eventType: IntegrityEventType
+  occurredAt: string
+  sequenceNumber: number
+  metadata?: Record<string, unknown>
 }
 
 /** value is an MCQ option letter (e.g. "B") when the question is mcq, or
@@ -714,7 +832,8 @@ export interface CareerPathResponse {
 export interface CreateCareerPathRequest {
   title: string
   description?: string
-  required_subjects?: string[]
+  sector: string
+  minEduLevel: string
 }
 
 export interface CareerMatchResponse {
@@ -737,4 +856,193 @@ export interface NotificationResponse {
   body: string
   is_read: boolean
   created_at: string
+}
+
+// ── EG-GCKT model governance (backend/internal/modeling/dto/model_snapshots.go) ──
+// Milestone 9: candidate BKT/DINA/IRT parameter refits produced nightly by
+// ai-service's refit_worker.py, pending ministry_admin/curriculum_officer
+// review before they can affect the live engines.
+
+export type ModelSnapshotType =
+  | 'prerequisite_graph'
+  | 'qmatrix'
+  | 'irt_calibration'
+  | 'mirt_calibration'
+  | 'dina_parameters'
+  | 'gdina_parameters'
+  | 'bkt_parameters'
+  | 'dkt_model'
+  | 'fusion_policy'
+  | 'recommendation_policy'
+  | 'student_state_snapshot'
+
+export type ModelSnapshotStatus = 'candidate' | 'validated' | 'active' | 'rejected' | 'superseded'
+
+export interface ModelSnapshot {
+  id: string
+  modelType: ModelSnapshotType
+  version: number
+  status: ModelSnapshotStatus
+  scope?: string
+  config: Record<string, unknown>
+  trainingSummary?: Record<string, unknown>
+  notes?: string
+  createdAt: string
+}
+
+// ── EG-GCKT misconception modeling (backend/internal/assessment/dto/misconceptions.go) ──
+// Milestone 6, spec section 11: structured, LLM-proposed misconception
+// hypotheses pending teacher review.
+
+export type MisconceptionStatus = 'candidate' | 'confirmed' | 'rejected'
+
+export interface MisconceptionHypothesis {
+  id: string
+  studentId: string
+  topicId: string
+  topicTitle: string
+  misconceptionText: string
+  triggerPattern?: string
+  confidence?: number
+  status: MisconceptionStatus
+  interventionText?: string
+  generatedByModel?: string
+  createdAt: string
+}
+
+// ── EG-GCKT explainability (backend/internal/modeling/dto/explain.go) ──
+// Milestone 11, spec section 18: the five-part explanation for one
+// (student, topic) pair.
+
+export interface ExplanationCurrentState {
+  masteryProbability?: number
+  masteryStatus: string
+  trend?: string
+  evidenceCount: number
+  forgettingRisk?: number
+  lastSeen?: string
+}
+
+export interface ExplanationEvidenceItem {
+  provenance: string
+  estimate?: number
+  uncertainty?: number
+  reliability?: number
+  createdAt: string
+}
+
+export interface PrerequisiteMasterySummary {
+  topicId: string
+  title: string
+  edgeType: string
+  masteryProbability?: number
+}
+
+export interface ExplanationStructuralContext {
+  prerequisites: PrerequisiteMasterySummary[]
+}
+
+// ── EG-GCKT quality reports (backend/internal/curriculum/dto/quality_reports.go) ──
+
+export interface QuestionMappingIssue {
+  questionId: string
+  questionText: string
+  examId: string
+  reason: string
+  topicTitles?: string[]
+}
+
+export interface QMatrixQualityReport {
+  subjectCode: string
+  totalQuestions: number
+  missingMappings: QuestionMappingIssue[]
+  lowConfidenceMappings: QuestionMappingIssue[]
+  ambiguousMappings: QuestionMappingIssue[]
+}
+
+export interface OrphanedTopic {
+  topicId: string
+  title: string
+}
+
+export interface LowConfidenceEdgeIssue {
+  topicId: string
+  topicTitle: string
+  prerequisiteTopicId: string
+  prerequisiteTitle: string
+  edgeType: string
+  confidence?: number
+  isValidated: boolean
+}
+
+export interface PrerequisiteQualityReport {
+  subjectCode: string
+  totalTopics: number
+  orphanedTopics: OrphanedTopic[]
+  lowConfidenceEdges: LowConfidenceEdgeIssue[]
+}
+
+export interface SkillStateSnapshot {
+  id: string
+  masteryProbability?: number
+  masteryStatus: string
+  uncertainty?: number
+  evidenceCount: number
+  trend?: string
+  snapshotReason: string
+  sourceEventRangeStart?: string
+  sourceEventRangeEnd?: string
+  takenAt: string
+}
+
+export interface Explanation {
+  studentId: string
+  topicId: string
+  topicTitle: string
+  currentState: ExplanationCurrentState
+  evidence: ExplanationEvidenceItem[]
+  structuralContext: ExplanationStructuralContext
+  confidence: string
+  recommendation: string
+  reason: string
+}
+
+// ── Student skill states (EG-GCKT, students.skill_states) ────────
+
+export interface SkillState {
+  topicId: string
+  topicTitle: string
+  subjectCode: string
+  gradeLevel: number
+  masteryProbability?: number
+  masteryStatus: string
+  uncertainty?: number
+  trend?: string
+  evidenceCount: number
+  forgettingRisk?: number
+  updatedAt: string
+}
+
+export interface SkillStatesResponse {
+  studentId: string
+  skillStates: SkillState[]
+}
+
+// ── Available exams for students ──────────────────────────────────
+
+export interface ExamAvailability {
+  examId: string
+  title: string
+  subjectCode: string
+  gradeLevel: number
+  examScope: ExamScope
+  totalMarks: number
+  questionCount: number
+  publishedAt: string
+  closesAt?: string
+  alreadyAttempted: boolean
+}
+
+export interface AvailableExamsResponse {
+  exams: ExamAvailability[]
 }

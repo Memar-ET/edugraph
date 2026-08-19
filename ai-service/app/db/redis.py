@@ -43,6 +43,19 @@ STUDYPLAN_QUEUE = "queue:studyplan:generate"
 # approved (ApproveAndPromote in curriculum/service/service.go) -- consumed
 # by app/workers/embed_worker.py.
 EMBEDDING_QUEUE = "queue:embedding:generate"
+# EG-GCKT Milestone 1: attempt ids pushed by the Go side at the same seam
+# as GAP_ANALYZE_QUEUE (RecordLearningEvents + recordLearningEventsAndTrace
+# in exam_submit.go's service layer), once students.learning_events rows
+# exist for the attempt -- consumed by app/workers/kt_worker.py. Kept as a
+# separate Redis list rather than sharing GAP_ANALYZE_QUEUE: BRPOP is
+# destructive, so one consumer's pop would silently remove the job for the
+# other, starving whichever worker doesn't win the race.
+GCKT_TRACE_QUEUE = "queue:gckt:trace"
+# Phase 12: JSON payload ({"report_type": ..., "params": {...},
+# "report_id": "...", "requester_id": "..."}) pushed by Go when a
+# ministry_admin or school_admin requests a report -- consumed by
+# app/workers/report_worker.py.
+REPORT_QUEUE = "queue:report:generate"
 
 _client: Optional[redis.Redis] = None
 

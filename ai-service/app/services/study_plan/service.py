@@ -16,11 +16,14 @@ algorithm rather than the PRD's specified Neo4j GDS
 (gds.dag.topologicalSort) -- GDS isn't available on Neo4j Community
 Edition, which is what this deployment actually runs; Kahn's algorithm
 over the same edge set produces the same topological guarantee without
-the plugin dependency. Similarly, the PRD's Step 3 prioritization
-(exam date x CLO mandatory flag x severity) is implemented as severity
-only today -- exam date and mandatory-flag weighting aren't wired in.
-The PRD's declared daily-availability input isn't read either;
-HOURS_PER_DAY below is a fixed constant.
+the plugin dependency. Step 3 prioritization among topics with no
+outstanding prerequisite (formerly severity-only) is now EG-GCKT
+Milestone 7's composite next-best-action score -- expected learning gain,
+information gain, prerequisite impact, forgetting/recency need,
+mandatory-CLO curriculum priority, and a repetition penalty, see
+action_ranking.py -- with raw severity kept only as a tie-breaker below
+it. Exam-date weighting and the PRD's declared daily-availability input
+still aren't read; HOURS_PER_DAY below is a fixed constant.
 
 Step 5 (LLM enrichment) previously didn't exist in this codebase at all
 -- see study_plan/llm.py for the actual implementation now wired in
@@ -41,6 +44,11 @@ import structlog
 
 from app.db import neo4j as neo4j_db
 from app.db import postgres_studyplan as db
+from app.services.study_plan.action_ranking import (
+    classify_action_types,
+    compute_action_scores,
+    get_recommendation_policy_snapshot_id,
+)
 from app.services.study_plan.llm import enrich_days
 
 logger = structlog.get_logger()
@@ -71,7 +79,7 @@ async def process_study_plan_job(payload: dict) -> None:
     # Drop topics the curriculum no longer knows (deleted units etc.).
     topics = {tid: t for tid, t in topics.items() if tid in meta}
 
-    ordered = await _topological_order(topics, gaps, meta)
+    ordered = await _topological_order(student_id, topics, gaps, meta)
     days, total_hours = _pack_days(ordered, topics, meta)
 
     exam_days_away = None
@@ -90,6 +98,18 @@ async def process_study_plan_job(payload: dict) -> None:
             goal = day_goals.get(d["day"])
             if goal:
                 d["dayGoal"] = goal
+
+    # EG-GCKT Milestone 7 + checklist section 14: a distinct action type
+    # per topic (not just 'practice'), computed before plan_data is
+    # assembled so it's actually included in what gets persisted below --
+    # and which recommendation_policy version produced this plan (spec
+    # section 18).
+    is_root_cause = {tid: t["is_root_cause"] for tid, t in topics.items()}
+    action_types = await classify_action_types(student_id, ordered, is_root_cause)
+    recommendation_policy_snapshot_id = await get_recommendation_policy_snapshot_id()
+    for d in days:
+        for block in d["blocks"]:
+            block["actionType"] = action_types.get(block["topicId"], "practice")
 
     plan_data = {
         "generatedFrom": {
@@ -110,6 +130,12 @@ async def process_study_plan_job(payload: dict) -> None:
         total_hours=round(total_hours, 1),
         language=language,
     )
+    # EG-GCKT Milestone 7: record what was recommended so the NEXT
+    # generation's repetition penalty (action_ranking.py) can see it.
+    await db.log_recommendations(
+        student_id, school_id, ordered, plan_id, action_types, recommendation_policy_snapshot_id
+    )
+
     logger.info(
         "study_plan.generated",
         plan_id=plan_id,
@@ -157,12 +183,20 @@ def _aggregate_topics(gaps) -> dict[str, dict]:
     return topics
 
 
-async def _topological_order(topics: dict[str, dict], gaps, meta) -> list[str]:
+async def _topological_order(student_id: str, topics: dict[str, dict], gaps, meta) -> list[str]:
     """Kahn's algorithm over prerequisite edges among the study topics.
-    Ready set is popped severity-first (then curriculum order) so equally
-    unconstrained topics tackle the worst damage earliest."""
+    Ready set is popped by EG-GCKT Milestone 7's composite next-best-action
+    score (learning gain, information gain, prerequisite impact,
+    forgetting need, curriculum priority, repetition penalty -- see
+    action_ranking.py), falling back to this attempt's raw severity and
+    then curriculum order as tie-breakers, so equally-ranked topics still
+    resolve deterministically."""
     ids = list(topics)
-    edges = await neo4j_db.fetch_prerequisite_edges_among(ids)
+    try:
+        edges = await neo4j_db.fetch_prerequisite_edges_among(ids)
+    except Exception:  # noqa: BLE001 -- graph-service outage (FI-008): degrade to the Postgres mirror rather than fail plan generation
+        logger.warning("study_plan.neo4j_unavailable_falling_back", topic_count=len(ids), exc_info=True)
+        edges = []
     if not edges:
         edges = await db.fetch_prereq_edges_pg(ids)
     # Implied edges from 3A's per-gap verdicts: the root cause must be
@@ -185,9 +219,12 @@ async def _topological_order(topics: dict[str, dict], gaps, meta) -> list[str]:
         dependents[p].add(t)
         indegree[t] += 1
 
+    action_scores = await compute_action_scores(student_id, ids)
+
     def rank(tid: str) -> tuple:
         m = meta[tid]
         return (
+            -action_scores.get(tid, 0.0),
             -topics[tid]["severity"],
             m["grade_level"],
             m["unit_number"],

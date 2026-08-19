@@ -1,0 +1,35 @@
+{{- if .Values.ingress.enabled }}
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: edugraph
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "edugraph.labels" . | nindent 4 }}
+  annotations:
+    {{- toYaml .Values.ingress.annotations | nindent 4 }}
+spec:
+  ingressClassName: {{ .Values.ingress.ingressClassName }}
+  rules:
+    - host: {{ .Values.ingress.host | default "" | quote }}
+      http:
+        paths:
+          - path: /api
+            pathType: Prefix
+            backend:
+              service:
+                name: edugraph-api
+                port:
+                  number: {{ .Values.service.api.port }}
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: edugraph-frontend
+                port:
+                  number: {{ .Values.service.frontend.port }}
+  {{- if .Values.ingress.tls }}
+  tls:
+    {{- toYaml .Values.ingress.tls | nindent 4 }}
+  {{- end }}
+{{- end }}

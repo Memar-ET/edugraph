@@ -12,6 +12,8 @@ import (
 	curriculumhandler "github.com/edugraph-ai/edugraph/internal/curriculum/handler"
 	jobshandler "github.com/edugraph-ai/edugraph/internal/jobs/handler"
 	ministryhandler "github.com/edugraph-ai/edugraph/internal/ministry/handler"
+	reportshandler "github.com/edugraph-ai/edugraph/internal/reports/handler"
+	modelinghandler "github.com/edugraph-ai/edugraph/internal/modeling/handler"
 	notificationhandler "github.com/edugraph-ai/edugraph/internal/notification/handler"
 	regionhandler "github.com/edugraph-ai/edugraph/internal/region/handler"
 	schoolhandler "github.com/edugraph-ai/edugraph/internal/school/handler"
@@ -47,11 +49,17 @@ type handlers struct {
 	notification *notificationhandler.Handler
 	jobs         *jobshandler.Handler
 	storage      *storagehandler.Handler
+	modeling     *modelinghandler.Handler
+	reports      *reportshandler.Handler
 }
 
 func newRouter(cfg config.Config, log *zap.Logger, verifier middleware.TokenVerifier, deviceVerifier synchandler.DeviceVerifier, h handlers) http.Handler {
+	middleware.SetLogger(log)
 	r := chi.NewRouter()
 
+	// Outermost middleware — applied to every path including /health.
+	r.Use(middleware.SecurityHeaders(cfg.AppEnv))
+	r.Use(middleware.RequestID)
 	r.Use(middleware.Recover(log))
 	r.Use(middleware.Logging(log))
 	r.Use(middleware.CORS(cfg.CORSOrigins))
@@ -62,9 +70,16 @@ func newRouter(cfg config.Config, log *zap.Logger, verifier middleware.TokenVeri
 
 	authenticated := middleware.Authenticate(verifier)
 
+	// Rate limiters — token bucket, stdlib only, no external deps.
+	// Auth endpoints: 10 req/s burst-20 per IP (brute-force protection).
+	authLimiter := middleware.NewRateLimiter(10, 20, middleware.IPKey)
+	// Authenticated API: 60 req/s burst-120 per authenticated user.
+	apiLimiter := middleware.NewRateLimiter(60, 120, middleware.UserKey)
+
 	r.Route("/api/v1", func(r chi.Router) {
 		// ── Auth ──────────────────────────────────────────────
 		r.Route("/auth", func(r chi.Router) {
+			r.Use(authLimiter)
 			r.Post("/register", h.auth.Register)
 			r.Post("/login", h.auth.Login)
 			r.Post("/refresh", h.auth.Refresh)
@@ -86,6 +101,7 @@ func newRouter(cfg config.Config, log *zap.Logger, verifier middleware.TokenVeri
 		// Everything below requires a valid access token.
 		r.Group(func(r chi.Router) {
 			r.Use(authenticated)
+			r.Use(apiLimiter)
 
 			// ── Regions ───────────────────────────────────────
 			r.Route("/regions", func(r chi.Router) {
@@ -137,6 +153,36 @@ func newRouter(cfg config.Config, log *zap.Logger, verifier middleware.TokenVeri
 				// Capability 3B: study plans generated from gap records.
 				r.With(middleware.RequireRole(roleStudent)).Post("/me/study-plans", h.assessment.GenerateStudyPlan)
 				r.With(middleware.RequireRole(roleStudent)).Get("/me/study-plans", h.assessment.ListMyStudyPlans)
+
+				// EG-GCKT skill-map view: every topic the caller has any
+				// fused evidence for. Resolves the caller's own students.id
+				// server-side (Service.MySkillStates) -- never existed as a
+				// route before, so the frontend's skill-map page 404'd.
+				r.With(middleware.RequireRole(roleStudent)).Get("/me/skill-states", h.modeling.GetMySkillStates)
+
+				// Exam-taking entry point: every published exam matching
+				// the caller's own school/grade -- never existed as a
+				// route before, so StudentExamListPage/available-exams
+				// 404'd for every student.
+				r.With(middleware.RequireRole(roleStudent)).Get("/me/available-exams", h.assessment.GetAvailableExams)
+
+				// EG-GCKT Milestone 11: five-part explanation (spec section
+				// 18). {id} is caller-supplied -- Service.authorizeExplain
+				// enforces ownership server-side (own record for a student,
+				// same-school for a teacher/school_admin), not the role gate
+				// alone, the same lesson checklist 11.3's career-matches fix
+				// already established for this codebase.
+				r.Get("/{id}/topics/{topicId}/explain", h.modeling.Explain)
+				// EG-GCKT checklist sections 6/18/22: historical state
+				// snapshots for comparison over time. Same authorization as
+				// Explain.
+				r.Get("/{id}/topics/{topicId}/state-snapshots", h.modeling.ListSkillStateSnapshots)
+				// Teacher-facing counterpart to /me/skill-states -- backs
+				// TeacherStudentDetailPage, which previously called
+				// /me/skill-states (the caller's own state, not the
+				// viewed student's) and failed for every teacher. Same
+				// authorization as Explain.
+				r.Get("/{id}/skill-states", h.modeling.GetStudentSkillStates)
 			})
 
 			// ── Teachers ──────────────────────────────────────
@@ -160,6 +206,10 @@ func newRouter(cfg config.Config, log *zap.Logger, verifier middleware.TokenVeri
 				r.Use(middleware.RequireRole(roleMinistryAdmin, roleRegionalAdmin))
 				r.Get("/overview", h.ministry.Overview)
 				r.Get("/regions/{regionID}/stats", h.ministry.RegionStats)
+				// 6.1: ranked underperforming schools with weak-topic breakdown
+				r.Get("/regions/{regionID}/underperforming", h.ministry.UnderperformingSchools)
+				// 6.2: AI-generated national curriculum insights (degrades gracefully)
+				r.With(middleware.RequireRole(roleMinistryAdmin)).Post("/curriculum-insights", h.ministry.CurriculumInsights)
 			})
 
 			// ── Curriculum ──────────────────────────────────────
@@ -175,8 +225,12 @@ func newRouter(cfg config.Config, log *zap.Logger, verifier middleware.TokenVeri
 				r.Get("/topics/{id}/prerequisites", h.curriculum.ListTopicPrerequisites)
 				// Feature 1.4: confirm a link (typically one created "ai_inferred").
 				r.With(middleware.RequireRole(roleMinistryAdmin, roleTeacher, roleCurriculumOfficer)).Patch("/topics/{id}/prerequisites/{prereqId}/validate", h.curriculum.ValidatePrerequisite)
+				// EG-GCKT: append-only review history for one prerequisite edge.
+				r.Get("/topics/{id}/prerequisites/{prereqId}/history", h.curriculum.PrerequisiteHistory)
 				// Feature 1.5: bulk catch-up sync of the whole prerequisite graph into Neo4j.
 				r.With(middleware.RequireRole(roleMinistryAdmin)).Post("/prerequisites/resync", h.curriculum.ResyncPrerequisites)
+				// CUR-05: bulk resync of all (:Topic)-[:HAS_CLO]->(:CLO) edges into Neo4j.
+				r.With(middleware.RequireRole(roleMinistryAdmin)).Post("/clos/resync", h.curriculum.ResyncCLOs)
 				// Curriculum Officer dashboard: the officer's own upload/approval history.
 				r.With(middleware.RequireRole(roleCurriculumOfficer, roleMinistryAdmin)).Get("/jobs", h.curriculum.ListJobs)
 				// Mid-year revisions (feature 1.3): link an already-approved
@@ -186,22 +240,53 @@ func newRouter(cfg config.Config, log *zap.Logger, verifier middleware.TokenVeri
 				// Flat topic list for the prerequisites UI's topic picker --
 				// no general "browse the curriculum" endpoint exists.
 				r.Get("/subjects/{code}/topics", h.curriculum.ListTopicsBySubject)
-				// Ministry curriculum browser: every promoted subject system-wide.
-				r.With(middleware.RequireRole(roleMinistryAdmin, roleCurriculumOfficer)).Get("/subjects", h.curriculum.ListSubjects)
+				// Ministry curriculum browser, but also the data source for
+				// the teacher-facing CurriculumCoveragePage (frontend
+				// /teacher/curriculum-coverage, reachable by teacher and
+				// school_admin per canAccessTeacherDashboard) -- both need
+				// the subject list to pick a subject to check coverage for.
+				r.With(middleware.RequireRole(roleMinistryAdmin, roleCurriculumOfficer, roleTeacher, roleSchoolAdmin)).Get("/subjects", h.curriculum.ListSubjects)
 				// Neo4j knowledge-graph subtree for a subject -- backs the
 				// frontend graph visualization.
 				r.Get("/subjects/{code}/graph", h.curriculum.GetSubjectGraph)
+				// EG-GCKT checklist sections 4/5/16: structural quality
+				// reports (missing/low-confidence/ambiguous Q-matrix
+				// mappings; orphaned topics and low-confidence prerequisite
+				// edges), scoped to one subject.
+				r.With(middleware.RequireRole(roleCurriculumOfficer, roleMinistryAdmin)).Get("/subjects/{code}/qmatrix-quality", h.curriculum.QMatrixQuality)
+				r.With(middleware.RequireRole(roleCurriculumOfficer, roleMinistryAdmin)).Get("/subjects/{code}/prerequisite-quality", h.curriculum.PrerequisiteQuality)
 			})
 
 			// ── Exams (Capability 2A: upload + AI parsing; 2B: AI validation report; 2C: submission) ──
 			r.Route("/exams", func(r chi.Router) {
+				// School-scoped list (Repository.ListExamsBySchool) --
+				// TeacherExamListPage/ClassAnalyticsPage/QuestionBankPage/
+				// TeacherDashboardPage all call this; it never existed as
+				// a route before, so every one of those pages 404'd.
+				r.With(middleware.RequireRole(roleTeacher, roleSchoolAdmin)).Get("/", h.assessment.ListExams)
 				r.With(middleware.RequireRole(roleTeacher, roleSchoolAdmin)).Post("/upload", h.assessment.UploadExam)
-				r.With(middleware.RequireRole(roleTeacher, roleSchoolAdmin)).Get("/{id}", h.assessment.GetExam)
+				// Student path (PreExamPage, the exam instructions/
+				// confirmation screen) needs this too -- see
+				// Service.GetExam's doc comment for the two different
+				// authorization rules this now enforces per caller.
+				// Teacher-only until this fix, which 403'd every student.
+				r.With(middleware.RequireRole(roleTeacher, roleSchoolAdmin, roleStudent)).Get("/{id}", h.assessment.GetExam)
 				r.With(middleware.RequireRole(roleTeacher, roleSchoolAdmin)).Post("/{id}/validate", h.assessment.ValidateExam)
 				// Capability 2D: fix a wrong subject/grade/exam-type/unit-range
 				// without re-uploading the file, then re-run /validate.
 				r.With(middleware.RequireRole(roleTeacher, roleSchoolAdmin)).Patch("/{id}/scope", h.assessment.UpdateExamScope)
 				r.With(middleware.RequireRole(roleTeacher, roleSchoolAdmin)).Post("/{id}/publish", h.assessment.PublishExam)
+				r.With(middleware.RequireRole(roleTeacher, roleSchoolAdmin)).Post("/{id}/close", h.assessment.CloseExam)
+				// Production-hardening pass: creates (or resumes, if one is
+				// already in_progress) the student's exam session --
+				// server-authoritative timer/randomization/resume all
+				// anchor off the attempt this creates. Idempotent while an
+				// attempt is in_progress. Must run before /questions,
+				// /autosave, /submit, all of which now require it to
+				// already exist.
+				r.With(middleware.RequireRole(roleStudent)).Post("/{id}/start", h.assessment.StartAttempt)
+				r.With(middleware.RequireRole(roleStudent)).Post("/{id}/autosave", h.assessment.AutosaveExamDraft)
+				r.With(middleware.RequireRole(roleStudent)).Get("/{id}/draft", h.assessment.GetExamDraft)
 				r.With(middleware.RequireRole(roleTeacher, roleSchoolAdmin)).Post("/{id}/answer-key", h.assessment.UploadAnswerKey)
 				r.With(middleware.RequireRole(roleStudent)).Get("/{id}/questions", h.assessment.ListExamQuestions)
 				r.With(middleware.RequireRole(roleStudent)).Post("/{id}/submit", h.assessment.SubmitExam)
@@ -214,6 +299,11 @@ func newRouter(cfg config.Config, log *zap.Logger, verifier middleware.TokenVeri
 				// Capability 4B: retroactive exam quality report
 				// (discrimination, calibration, time anomalies, CLO coverage).
 				r.With(middleware.RequireRole(roleTeacher, roleSchoolAdmin)).Get("/{id}/quality", h.assessment.GetExamQuality)
+				// Exam-integrity signals (tab visibility, fullscreen,
+				// connection status) -- students report, teachers read an
+				// aggregate summary. Never framed as proof of misconduct.
+				r.With(middleware.RequireRole(roleStudent)).Post("/{id}/attempts/current/events", h.assessment.ReportIntegrityEvents)
+				r.With(middleware.RequireRole(roleTeacher, roleSchoolAdmin)).Get("/{id}/integrity", h.assessment.GetExamIntegritySummary)
 				// Capability 2.2: "Mode B" print-ready exam sheet + optical
 				// answer key (PDF via the browser's own print-to-PDF, see
 				// exam_print_templates.go). Both teacher/school_admin only --
@@ -221,6 +311,33 @@ func newRouter(cfg config.Config, log *zap.Logger, verifier middleware.TokenVeri
 				// blank exam sheet is teacher-initiated (print then hand out).
 				r.With(middleware.RequireRole(roleTeacher, roleSchoolAdmin)).Get("/{id}/print", h.assessment.PrintExam)
 				r.With(middleware.RequireRole(roleTeacher, roleSchoolAdmin)).Get("/{id}/print/answer-key", h.assessment.PrintAnswerKey)
+			})
+
+			// ── EG-GCKT: versioned Q-matrix (spec section 6.3) ──
+			// Lives on the curriculum handler (dto/repository/service all in
+			// the curriculum package, mirroring prerequisites.go's shape)
+			// even though it's mounted under /questions -- the Q-matrix maps
+			// assessment items to curriculum skills, so it's curriculum
+			// domain logic operating on an assessment.questions foreign key,
+			// same relationship topic_clo_mappings already has.
+			r.Route("/questions", func(r chi.Router) {
+				r.With(middleware.RequireRole(roleMinistryAdmin, roleTeacher, roleCurriculumOfficer)).Post("/{id}/skill-mappings", h.curriculum.AddItemSkillMapping)
+				r.Get("/{id}/skill-mappings", h.curriculum.ListItemSkillMappings)
+				r.With(middleware.RequireRole(roleMinistryAdmin)).Post("/skill-mappings/resync", h.curriculum.ResyncItemSkillMappings)
+			})
+
+			// ── EG-GCKT: misconception review queue (spec section 11) ──
+			r.Route("/misconceptions", func(r chi.Router) {
+				r.With(middleware.RequireRole(roleTeacher, roleSchoolAdmin)).Get("/", h.assessment.ListCandidateMisconceptions)
+				r.With(middleware.RequireRole(roleTeacher, roleSchoolAdmin)).Patch("/{id}/review", h.assessment.ReviewMisconception)
+			})
+
+			// ── EG-GCKT Milestone 9: model-governance review queue ──
+			// (BKT/DINA/IRT nightly refit candidates, spec section 19).
+			r.Route("/model-snapshots", func(r chi.Router) {
+				r.With(middleware.RequireRole(roleMinistryAdmin, roleCurriculumOfficer)).Get("/candidates", h.modeling.ListCandidateSnapshots)
+				r.With(middleware.RequireRole(roleMinistryAdmin)).Post("/{id}/promote", h.modeling.PromoteSnapshot)
+				r.With(middleware.RequireRole(roleMinistryAdmin)).Post("/{id}/reject", h.modeling.RejectSnapshot)
 			})
 
 			// ── AI Tutor (Capability 3C: Graph-RAG + Gemini) ──
@@ -232,6 +349,21 @@ func newRouter(cfg config.Config, log *zap.Logger, verifier middleware.TokenVeri
 			r.Route("/career", func(r chi.Router) {
 				r.Get("/paths", h.career.List)
 				r.With(middleware.RequireRole(roleMinistryAdmin)).Post("/paths", h.career.Create)
+			})
+
+			// ── Reports (Phase 12: async report generation) ──────
+			// TeacherReportsPage, SchoolReportsPage, RegionalReportsPage,
+			// MinistryReportsPage, and MinistryDataExportsPage all call
+			// generate/list/get -- the role gate below was originally
+			// scoped to only ministry_admin/school_admin, which 403'd the
+			// teacher and regional_admin pages entirely.
+			r.Route("/reports", func(r chi.Router) {
+				r.With(middleware.RequireRole(roleMinistryAdmin, roleSchoolAdmin, roleTeacher, roleRegionalAdmin)).Post("/generate", h.reports.Generate)
+				// List is scoped server-side to the caller's own requested
+				// reports (Repository.ListByRequester); role gate kept
+				// aligned with generate/get for consistency.
+				r.With(middleware.RequireRole(roleMinistryAdmin, roleSchoolAdmin, roleTeacher, roleRegionalAdmin)).Get("/", h.reports.List)
+				r.With(middleware.RequireRole(roleMinistryAdmin, roleSchoolAdmin, roleTeacher, roleRegionalAdmin)).Get("/{id}", h.reports.Get)
 			})
 
 			// ── Notifications ─────────────────────────────────

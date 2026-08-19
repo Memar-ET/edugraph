@@ -6,6 +6,7 @@ import type { HeatmapTopic } from '@/types/api'
 export interface HeatmapGridProps {
   topics: HeatmapTopic[]
   className?: string
+  onTopicClick?: (topicId: string, topicTitle: string) => void
 }
 
 function intensityTone(pct: number) {
@@ -15,12 +16,16 @@ function intensityTone(pct: number) {
 }
 
 /** Capability 4A class heatmap: topics ranked by share of the class struggling. */
-export function HeatmapGrid({ topics, className }: HeatmapGridProps) {
+export function HeatmapGrid({ topics, className, onTopicClick }: HeatmapGridProps) {
   const sorted = [...topics].sort((a, b) => b.strugglingPct - a.strugglingPct)
   return (
     <div className={cn('divide-y divide-gray-100', className)}>
       {sorted.map((topic) => (
-        <div key={topic.topicId} className="flex items-center gap-4 py-3">
+        <div
+          key={topic.topicId}
+          className={cn('flex items-center gap-4 py-3', onTopicClick && 'cursor-pointer hover:bg-gray-50 rounded-lg px-1 -mx-1')}
+          onClick={() => onTopicClick?.(topic.topicId, topic.title)}
+        >
           <div className="w-40 shrink-0 truncate text-sm font-medium text-gray-900 sm:w-48">{topic.title}</div>
           <div className="h-2.5 flex-1 overflow-hidden rounded-full bg-gray-100">
             <div

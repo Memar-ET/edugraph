@@ -12,6 +12,18 @@ class Settings(BaseSettings):
     POSTGRES_PASSWORD: str = "password"
     POSTGRES_SSLMODE: str = "disable"
     POSTGRES_MAX_CONNS: int = 80
+    # Both queue workers were single-sequential BRPOP consumers -- fine at
+    # demo-seed volume, but each attempt's knowledge-tracing/gap-analysis
+    # pass does several sequential DB+Neo4j round trips (tens of seconds
+    # against a real remote Postgres), so one job at a time badly limits
+    # throughput once real exam volume shows up. Both workers already share
+    # ONE sized asyncpg pool (app.db.postgres.get_pool, capped at
+    # max(5, POSTGRES_MAX_CONNS // 4)), so running several consumer loops
+    # concurrently is safe -- the pool itself bounds real Postgres sessions,
+    # it doesn't multiply them. Defaults to 1 (unchanged behavior) so this
+    # is opt-in via env, not a silent behavior change.
+    KT_WORKER_CONCURRENCY: int = 1
+    GAP_WORKER_CONCURRENCY: int = 1
 
     # ── NEO4J ────────────────────────────────
     NEO4J_URI: str = "bolt://neo4j:7687"

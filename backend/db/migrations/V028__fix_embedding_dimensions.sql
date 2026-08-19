@@ -18,17 +18,30 @@
 -- fastembed/e5-large model existed on this branch. Fixed here rather
 -- than in a separate migration since it's the identical bug.
 --
--- All three tables are expected to be empty at this point (nothing has
--- ever written to them -- see the PRD/status review that flagged this,
--- and topic_embeddings' own worker was still wired to a stub provider
--- until this merge), so this drops and recreates rather than attempting
--- a data migration. If that assumption is wrong in your environment,
--- back up embeddings.clo_embeddings/question_embeddings/topic_embeddings
--- before running this.
+-- All three tables were expected to be empty at this point, but in
+-- practice clo_embeddings/topic_embeddings already hold real rows on
+-- any environment where the Biology curriculum was ingested (2026-08-10)
+-- -- written by the acknowledged-non-semantic StubEmbeddingProvider
+-- (768-dim hash placeholder, model_ver='stub-hash-v1'; see CLAUDE.md
+-- "CLO/Topic Embeddings"). A plain ALTER COLUMN TYPE vector(1024) fails
+-- outright ("expected 1024 dimensions, not 768") since pgvector
+-- validates existing row width on the cast -- it can't be resized in
+-- place. Since this data is stub/non-semantic (cosine similarity over
+-- it was never meaningful), the correct fix is to clear it, not
+-- preserve it: TRUNCATE before widening the column, then let
+-- embed_worker.py's normal re-embed-on-approve path repopulate real
+-- 1024-dim vectors as curriculum jobs get re-approved/re-touched.
+-- question_embeddings genuinely is still empty (never written to --
+-- see CLAUDE.md Known Gaps), so its TRUNCATE is a no-op safety net,
+-- not a behavior change.
 
 DROP INDEX IF EXISTS embeddings.idx_clo_emb_hnsw;
 DROP INDEX IF EXISTS embeddings.idx_q_emb_hnsw;
 DROP INDEX IF EXISTS embeddings.idx_topic_emb_hnsw;
+
+TRUNCATE TABLE embeddings.clo_embeddings;
+TRUNCATE TABLE embeddings.question_embeddings;
+TRUNCATE TABLE embeddings.topic_embeddings;
 
 ALTER TABLE embeddings.clo_embeddings
     ALTER COLUMN embedding TYPE vector(1024);

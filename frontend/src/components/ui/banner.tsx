@@ -11,14 +11,30 @@ const toneStyles = {
 
 export interface BannerProps extends HTMLAttributes<HTMLDivElement> {
   tone?: keyof typeof toneStyles
+  variant?: keyof typeof toneStyles
+  title?: string
+  description?: string
 }
 
-export function Banner({ tone = 'info', className, ...props }: BannerProps) {
+export function Banner({
+  tone,
+  variant,
+  title,
+  description,
+  className,
+  children,
+  ...props
+}: BannerProps) {
+  const activeTone = tone ?? variant ?? 'info'
   return (
     <div
-      role={tone === 'error' ? 'alert' : 'status'}
-      className={cn('rounded-md border px-4 py-3 text-sm', toneStyles[tone], className)}
+      role={activeTone === 'error' ? 'alert' : 'status'}
+      className={cn('rounded-md border px-4 py-3 text-sm', toneStyles[activeTone], className)}
       {...props}
-    />
+    >
+      {title && <p className="font-semibold">{title}</p>}
+      {description && <p className={title ? 'mt-0.5 text-xs opacity-90' : ''}>{description}</p>}
+      {children}
+    </div>
   )
 }

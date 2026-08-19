@@ -73,9 +73,12 @@ func (h *Handler) ListTopicPrerequisites(w http.ResponseWriter, r *http.Request)
 
 // ValidatePrerequisite handles
 // PATCH /api/v1/curriculum/topics/:id/prerequisites/:prereqId/validate
+// ?edgeType=requires (optional, defaults to "requires")
 //
 // Confirms an existing link (typically one created with inferMethod
-// "ai_inferred", so IsValidated started false) -- feature 1.4.
+// "ai_inferred", so IsValidated started false) -- feature 1.4. edgeType
+// disambiguates which of possibly several typed edges between the same
+// topic pair is being validated.
 func (h *Handler) ValidatePrerequisite(w http.ResponseWriter, r *http.Request) {
 	topicID, err := uuid.Parse(chi.URLParam(r, "id"))
 	if err != nil {
@@ -99,13 +102,46 @@ func (h *Handler) ValidatePrerequisite(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	resp, err := h.service.ValidatePrerequisite(r.Context(), userID, topicID, prereqID)
+	edgeType := r.URL.Query().Get("edgeType")
+
+	resp, err := h.service.ValidatePrerequisite(r.Context(), userID, topicID, prereqID, edgeType)
 	if err != nil {
 		writeServiceError(w, err)
 		return
 	}
 
 	middleware.WriteJSON(w, http.StatusOK, resp)
+}
+
+// PrerequisiteHistory handles
+// GET /api/v1/curriculum/topics/:id/prerequisites/:prereqId/history
+// ?edgeType=requires (optional, defaults to "requires")
+//
+// Returns the full append-only review history for one prerequisite edge
+// (Milestone 11) -- every created/validated/edge_type_changed/
+// confidence_changed/rejected/superseded event, not just the current
+// reviewed_by/confirmed_at snapshot.
+func (h *Handler) PrerequisiteHistory(w http.ResponseWriter, r *http.Request) {
+	topicID, err := uuid.Parse(chi.URLParam(r, "id"))
+	if err != nil {
+		middleware.WriteError(w, apperrors.BadRequest("invalid topic id"))
+		return
+	}
+	prereqID, err := uuid.Parse(chi.URLParam(r, "prereqId"))
+	if err != nil {
+		middleware.WriteError(w, apperrors.BadRequest("invalid prerequisite topic id"))
+		return
+	}
+
+	edgeType := r.URL.Query().Get("edgeType")
+
+	history, err := h.service.ListPrerequisiteReviewHistory(r.Context(), topicID, prereqID, edgeType)
+	if err != nil {
+		writeServiceError(w, err)
+		return
+	}
+
+	middleware.WriteJSON(w, http.StatusOK, history)
 }
 
 // ResyncPrerequisites handles POST /api/v1/curriculum/prerequisites/resync

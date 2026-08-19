@@ -2,7 +2,6 @@ package repository
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"time"
@@ -14,30 +13,28 @@ import (
 
 var ErrNotFound = errors.New("not found")
 
-// This repository targets career_paths_v010/career_matches_v010, not the
-// bare career_paths/career_matches names visible elsewhere in this file's
-// SQL history -- V011__updated_curriculum.sql renamed (archived, not
-// dropped) the originals to make room for a newer careers.careers/
-// careers.career_topic_requirements/careers.career_matches schema
-// (topic-level requirements + importance weighting, closer to the PRD's
-// Neo4j-native design). That newer schema is completely unused anywhere
-// in the codebase today -- confirmed by grep, not assumed -- so this
-// repository was left pointed at a table name (career_paths) that V011
-// had already renamed out from under it, which is the deeper reason
-// "Generate Career Matches" was broken: every query here failed outright
-// with "relation does not exist", not just a downstream 502. Migrating
-// to the newer topic-level schema (which has no create/curation UI for
-// career_topic_requirements yet either) is real, larger future work --
-// out of scope for fixing the actually-broken feature; see the
-// career_matcher/service.py docstring on the ai-service side for the
-// same call.
+// This repository targets careers.careers/careers.career_matches/
+// careers.career_topic_requirements -- V011__updated_curriculum.sql
+// renamed the old bare career_paths/career_matches tables to
+// career_paths_v010/career_matches_v010 (archived, not dropped, per that
+// migration's own comment) to make room for this newer schema. A prior
+// version of this repository stayed pointed at the archived _v010
+// names on the stated rationale that the newer schema was "completely
+// unused." That rationale no longer holds: on the live Supabase
+// database the _v010 tables were never actually created (confirmed via
+// \dt -- career_paths_v010/career_matches_v010 don't exist there at
+// all, only careers.careers/careers.career_matches/
+// careers.career_topic_requirements do), so every query here failed
+// outright with "relation does not exist" rather than the intended
+// "legacy archived data" fallback. Migrated to the real schema below.
 //
-// A since-renumbered V032__cleanup_old_curriculum_tables.sql (merged
-// from a different work stream, originally V012) tried to DROP these
-// two tables outright, on the stated but unmet precondition that this
-// repository had already migrated off them -- see that migration's own
-// comment. Do not drop career_paths_v010/career_matches_v010 without
-// actually migrating this file to the careers.* schema first.
+// careers.careers has no flat required_subjects column -- requirements
+// are topic-level (careers.career_topic_requirements -> curriculum.
+// topics), so RequiredSubjects here is derived as the distinct set of
+// subject codes among a career's required topics. There is still no
+// curation UI for career_topic_requirements, so today this is
+// legitimately empty for every career (an honest empty list, not a
+// fabricated one) until that curation path is built.
 
 type CareerPath struct {
 	ID               string
@@ -62,18 +59,16 @@ func New(pool *pgxpool.Pool, neo4j neo4jdriver.DriverWithContext) *Repository {
 	return &Repository{pool: pool, neo4j: neo4j}
 }
 
-func (r *Repository) Create(ctx context.Context, title string, description *string, requiredSubjects []string) (CareerPath, error) {
-	subjectsJSON, err := json.Marshal(requiredSubjects)
+func (r *Repository) Create(ctx context.Context, title string, description *string, sector, minEduLevel string) (CareerPath, error) {
+	const q = `INSERT INTO careers.careers (name_en, description, sector, min_edu_level)
+		VALUES ($1, $2, $3, $4)
+		RETURNING id, name_en, description, created_at`
+	var cp CareerPath
+	err := r.pool.QueryRow(ctx, q, title, description, sector, minEduLevel).Scan(&cp.ID, &cp.Title, &cp.Description, &cp.CreatedAt)
 	if err != nil {
-		return CareerPath{}, fmt.Errorf("marshal required subjects: %w", err)
+		return CareerPath{}, fmt.Errorf("create career: %w", err)
 	}
-
-	const q = `INSERT INTO career_paths_v010 (title, description, required_subjects) VALUES ($1, $2, $3)
-		RETURNING id, title, description, required_subjects, created_at`
-	cp, err := scanCareerPath(r.pool.QueryRow(ctx, q, title, description, subjectsJSON))
-	if err != nil {
-		return CareerPath{}, err
-	}
+	cp.RequiredSubjects = []string{}
 
 	session := r.neo4j.NewSession(ctx, neo4jdriver.SessionConfig{AccessMode: neo4jdriver.AccessModeWrite})
 	defer session.Close(ctx)
@@ -85,8 +80,22 @@ func (r *Repository) Create(ctx context.Context, title string, description *stri
 	return cp, nil
 }
 
+// careerColumns backs both List and GetByID -- RequiredSubjects is
+// derived as the distinct subject codes among a career's required topics
+// (careers.career_topic_requirements -> curriculum.topics), since
+// careers.careers has no flat required-subjects column. Legitimately
+// empty today for every career: there is no curation UI yet for
+// career_topic_requirements.
+const careerColumns = `
+	SELECT c.id, c.name_en, c.description, c.created_at,
+	       COALESCE(array_agg(DISTINCT t.subject_code) FILTER (WHERE t.subject_code IS NOT NULL), '{}')
+	FROM careers.careers c
+	LEFT JOIN careers.career_topic_requirements r ON r.career_id = c.id
+	LEFT JOIN curriculum.topics t ON t.id = r.topic_id
+`
+
 func (r *Repository) List(ctx context.Context) ([]CareerPath, error) {
-	const q = `SELECT id, title, description, required_subjects, created_at FROM career_paths_v010 ORDER BY title`
+	const q = careerColumns + " GROUP BY c.id, c.name_en, c.description, c.created_at ORDER BY c.name_en"
 	rows, err := r.pool.Query(ctx, q)
 	if err != nil {
 		return nil, fmt.Errorf("list career paths: %w", err)
@@ -108,7 +117,7 @@ func (r *Repository) List(ctx context.Context) ([]CareerPath, error) {
 }
 
 func (r *Repository) GetByID(ctx context.Context, id string) (CareerPath, error) {
-	const q = `SELECT id, title, description, required_subjects, created_at FROM career_paths_v010 WHERE id = $1`
+	const q = careerColumns + " WHERE c.id = $1 GROUP BY c.id, c.name_en, c.description, c.created_at"
 	cp, err := scanCareerPath(r.pool.QueryRow(ctx, q, id))
 	if errors.Is(err, pgx.ErrNoRows) {
 		return CareerPath{}, ErrNotFound
@@ -185,7 +194,7 @@ func (r *Repository) StudentSubjectAverages(ctx context.Context, studentID strin
 // the graph can be traversed for subject -> career recommendations.
 func (r *Repository) SaveMatches(ctx context.Context, studentID string, matches []Match) error {
 	for _, m := range matches {
-		const q = `INSERT INTO career_matches_v010 (student_id, career_path_id, match_score)
+		const q = `INSERT INTO careers.career_matches (student_id, career_path_id, match_score)
 			VALUES ($1, $2, $3)
 			ON CONFLICT (student_id, career_path_id)
 			DO UPDATE SET match_score = $3, generated_at = now()`
@@ -212,9 +221,9 @@ func (r *Repository) SaveMatches(ctx context.Context, studentID string, matches 
 
 func (r *Repository) ListMatches(ctx context.Context, studentID string) ([]Match, error) {
 	const q = `
-		SELECT cm.career_path_id, cp.title, cm.match_score
-		FROM career_matches_v010 cm
-		JOIN career_paths_v010 cp ON cp.id = cm.career_path_id
+		SELECT cm.career_path_id, c.name_en, cm.match_score
+		FROM careers.career_matches cm
+		JOIN careers.careers c ON c.id = cm.career_path_id
 		WHERE cm.student_id = $1
 		ORDER BY cm.match_score DESC`
 
@@ -240,10 +249,8 @@ func (r *Repository) ListMatches(ctx context.Context, studentID string) ([]Match
 
 func scanCareerPath(row pgx.Row) (CareerPath, error) {
 	var cp CareerPath
-	var rawSubjects []byte
-	if err := row.Scan(&cp.ID, &cp.Title, &cp.Description, &rawSubjects, &cp.CreatedAt); err != nil {
+	if err := row.Scan(&cp.ID, &cp.Title, &cp.Description, &cp.CreatedAt, &cp.RequiredSubjects); err != nil {
 		return CareerPath{}, fmt.Errorf("scan career path: %w", err)
 	}
-	_ = json.Unmarshal(rawSubjects, &cp.RequiredSubjects)
 	return cp, nil
 }

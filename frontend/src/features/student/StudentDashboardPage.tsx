@@ -17,49 +17,11 @@ import {
 import { StatusPill } from '@components/ui'
 import {
   generateStudyPlan,
+  getAvailableExams,
   getMySubjectProfiles,
 } from '@lib/api/endpoints'
 import { queryKeys } from '@lib/query/keys'
 import { useAuthStore } from '@stores/auth.store'
-
-const MOCK_PERFORMANCE_DATA = [
-  { label: 'Jan', value: 65 },
-  { label: 'Feb', value: 72 },
-  { label: 'Mar', value: 68 },
-  { label: 'Apr', value: 85 },
-  { label: 'May', value: 78 },
-  { label: 'June', value: 92 },
-]
-
-const MOCK_DONUT_SEGMENTS = [
-  { name: 'Mastered', value: 58, color: '#2d2d2e' },
-  { name: 'In Progress', value: 24, color: '#6b7280' },
-  { name: 'Needs Review', value: 18, color: '#e5e7eb' },
-]
-
-const MOCK_SCHEDULE_ITEMS = [
-  {
-    id: 's1',
-    title: 'Physics Unit 3 Exam',
-    time: '10 AM - 11:30 AM',
-    subtitle: 'Instructor: Devon Lane',
-    category: 'schedule' as const,
-  },
-  {
-    id: 's2',
-    title: 'AI Tutor Gap Session',
-    time: '2 PM (9 April, 2026)',
-    subtitle: 'Topic: Newton Laws',
-    category: 'upcoming' as const,
-  },
-  {
-    id: 's3',
-    title: 'Chemistry Lab Quiz',
-    time: '10 AM (10 April, 2026)',
-    subtitle: 'Unit: Stoichiometry',
-    category: 'upcoming' as const,
-  },
-]
 
 interface ExamRowItem {
   id: string
@@ -78,6 +40,41 @@ export function StudentDashboardPage() {
     queryKey: queryKeys.mySubjectProfiles(),
     queryFn: getMySubjectProfiles,
   })
+
+  const { data: availableExams } = useQuery({
+    queryKey: queryKeys.availableExams(),
+    queryFn: getAvailableExams,
+  })
+
+  const performanceData = subjectProfiles?.map((sp) => ({
+    label: sp.subjectName.slice(0, 4),
+    value: Math.round(sp.currentMasteryPct),
+  })) ?? []
+
+  const masteredCount = subjectProfiles?.filter((sp) => sp.currentMasteryPct >= 75).length ?? 0
+  const inProgressCount = subjectProfiles?.filter((sp) => sp.currentMasteryPct >= 40 && sp.currentMasteryPct < 75).length ?? 0
+  const needsReviewCount = subjectProfiles?.filter((sp) => sp.currentMasteryPct < 40).length ?? 0
+  const totalSubjects = (masteredCount + inProgressCount + needsReviewCount) || 1
+  const donutSegments = [
+    { name: 'Mastered', value: Math.round((masteredCount / totalSubjects) * 100), color: '#2d2d2e' },
+    { name: 'In Progress', value: Math.round((inProgressCount / totalSubjects) * 100), color: '#6b7280' },
+    { name: 'Needs Review', value: Math.round((needsReviewCount / totalSubjects) * 100), color: '#e5e7eb' },
+  ]
+
+  const avgMastery = subjectProfiles?.length
+    ? Math.round(subjectProfiles.reduce((s, p) => s + p.currentMasteryPct, 0) / subjectProfiles.length)
+    : 0
+
+  const scheduleItems = (availableExams?.exams ?? [])
+    .filter((e) => !e.alreadyAttempted)
+    .slice(0, 3)
+    .map((e) => ({
+      id: e.examId,
+      title: e.title,
+      time: e.closesAt ? `Closes ${new Date(e.closesAt).toLocaleDateString()}` : 'Open',
+      subtitle: `${e.subjectCode} · Grade ${e.gradeLevel}`,
+      category: 'upcoming' as const,
+    }))
 
   const generatePlan = useMutation({
     mutationFn: () => generateStudyPlan({}),
@@ -169,34 +166,34 @@ export function StudentDashboardPage() {
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <StatMetricCard
             title="Total Subjects"
-            value={`${subjectProfiles?.length ?? 4}+`}
-            change="10.4%"
+            value={`${subjectProfiles?.length ?? 0}`}
+            change=""
             trend="up"
-            periodText="Last Month"
+            periodText="Tracked by AI"
             icon={BookOpen}
           />
           <StatMetricCard
-            title="Total Exams Taken"
-            value="18+"
-            change="8.6%"
+            title="Exams Analyzed"
+            value={`${subjectProfiles?.reduce((s, p) => s + p.examsAnalyzed, 0) ?? 0}`}
+            change=""
             trend="up"
-            periodText="Last Month"
+            periodText="Total submissions"
             icon={ClipboardList}
           />
           <StatMetricCard
-            title="AI Gaps Resolved"
-            value="24+"
-            change="16.4%"
+            title="Available Exams"
+            value={`${availableExams?.exams.filter((e) => !e.alreadyAttempted).length ?? 0}`}
+            change=""
             trend="up"
-            periodText="Last Month"
+            periodText="Ready to take"
             icon={CheckCircle2}
           />
           <StatMetricCard
             title="Average Mastery"
-            value="82.4%"
-            change="20.6%"
-            trend="up"
-            periodText="Last Month"
+            value={`${avgMastery}%`}
+            change=""
+            trend={avgMastery >= 60 ? 'up' : 'down'}
+            periodText="Across all subjects"
             icon={Award}
           />
         </div>
@@ -206,9 +203,9 @@ export function StudentDashboardPage() {
           {/* Left Chart: Performance Area Chart */}
           <div className="lg:col-span-5">
             <PerformanceAreaChart
-              title="Students Performance Statistics"
-              subtitle="Monthly CLO & Exam Mastery Progress"
-              data={MOCK_PERFORMANCE_DATA}
+              title="Subject Mastery Overview"
+              subtitle="Current mastery percentage per subject"
+              data={performanceData}
             />
           </div>
 
@@ -216,19 +213,19 @@ export function StudentDashboardPage() {
           <div className="lg:col-span-4">
             <DistributionDonutChart
               title="Mastery & Gap Overview"
-              centerPercentage="82%"
-              centerLabel="Mastery"
-              totalValue="82.4 Avg Score"
-              segments={MOCK_DONUT_SEGMENTS}
-              dateLabel="12/04/2026"
+              centerPercentage={`${avgMastery}%`}
+              centerLabel="Avg Mastery"
+              totalValue={`${avgMastery}% Avg`}
+              segments={donutSegments}
+              dateLabel={new Date().toLocaleDateString('en-GB')}
             />
           </div>
 
           {/* Right Schedule & Events Widget */}
           <div className="lg:col-span-3">
             <ScheduleCalendarWidget
-              monthLabel="April 2026"
-              scheduleItems={MOCK_SCHEDULE_ITEMS}
+              monthLabel={new Date().toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
+              scheduleItems={scheduleItems}
               onAddNew={() => generatePlan.mutate()}
             />
           </div>

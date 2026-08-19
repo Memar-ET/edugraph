@@ -5,15 +5,17 @@ import (
 
 	"github.com/edugraph-ai/edugraph/internal/ministry/dto"
 	"github.com/edugraph-ai/edugraph/internal/ministry/repository"
+	"github.com/edugraph-ai/edugraph/pkg/ai"
 	apperrors "github.com/edugraph-ai/edugraph/pkg/errors"
 )
 
 type Service struct {
 	repo *repository.Repository
+	ai   *ai.Client
 }
 
-func New(repo *repository.Repository) *Service {
-	return &Service{repo: repo}
+func New(repo *repository.Repository, aiClient *ai.Client) *Service {
+	return &Service{repo: repo, ai: aiClient}
 }
 
 func (s *Service) Overview(ctx context.Context) (dto.OverviewResponse, error) {

@@ -1,14 +1,53 @@
+# Production overrides — values not listed here come from values.yaml defaults
+
+appEnv: production
+logLevel: info
+
 replicaCount:
-  api: 5
+  api: 3
   ai: 2
-  frontend: 3
+  frontend: 2
+
+image:
+  registry: "123456789012.dkr.ecr.af-south-1.amazonaws.com"
+  api:
+    tag: "REPLACE_WITH_SHA"
+  ai:
+    tag: "REPLACE_WITH_SHA"
+  frontend:
+    tag: "REPLACE_WITH_SHA"
 
 autoscaling:
   api:
-    minReplicas: 5
+    enabled: true
+    minReplicas: 3
     maxReplicas: 20
+    targetCPUUtilizationPercentage: 65
+  ai:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 8
 
-resources:
+ingress:
+  host: "edugraph.et"
+  tls:
+    - hosts: ["edugraph.et"]
+      secretName: edugraph-production-tls
+
+postgres:
+  maxConns: "15"
+  sslMode: "require"
+
+canary:
+  enabled: true
+  weight: 25   # CI sets to 100 after smoke test passes
+
+serviceAccount:
   api:
-    requests: { cpu: "200m", memory: "256Mi" }
-    limits:   { cpu: "1000m", memory: "1Gi" }
+    annotations:
+      eks.amazonaws.com/role-arn: "arn:aws:iam::123456789012:role/edugraph-production-api"
+  ai:
+    annotations:
+      eks.amazonaws.com/role-arn: "arn:aws:iam::123456789012:role/edugraph-production-ai"
+  frontend:
+    annotations: {}

@@ -1,57 +1,61 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { GraduationCap, School as SchoolIcon, ShieldCheck, Users } from 'lucide-react'
+import { AlertTriangle, ChevronDown, ChevronUp, GraduationCap, School as SchoolIcon, ShieldCheck, Users } from 'lucide-react'
 
 import { AppShell } from '@components/layout'
 import {
   DistributionDonutChart,
-  PerformanceAreaChart,
   ScheduleCalendarWidget,
   StatMetricCard,
 } from '@components/dashboard'
-import { Banner, Card, CardContent, CardHeader, CardTitle, EmptyState, Select, Spinner } from '@components/ui'
-import { QualityScoreGrid } from '@components/shared'
+import { Banner, Card, CardContent, CardHeader, CardTitle, EmptyState, Spinner } from '@components/ui'
 import { apiErrorMessage } from '@lib/api/client'
-import { getRegionStats, getSchoolQualityScores, listSchools } from '@lib/api/endpoints'
+import { getRegionStats, getUnderperformingSchools } from '@lib/api/endpoints'
 import { queryKeys } from '@lib/query/keys'
 import { formatNumber, formatPercent } from '@lib/utils/format'
 import { useAuthStore } from '@stores/auth.store'
-
-const MOCK_REGIONAL_PERFORMANCE = [
-  { label: 'Jan', value: 68 },
-  { label: 'Feb', value: 74 },
-  { label: 'Mar', value: 79 },
-  { label: 'Apr', value: 83 },
-  { label: 'May', value: 86 },
-  { label: 'June', value: 91 },
-]
-
-const MOCK_REGIONAL_DONUT = [
-  { name: 'High Performing', value: 64, color: '#2d2d2e' },
-  { name: 'On Track', value: 24, color: '#6b7280' },
-  { name: 'Under Audit', value: 12, color: '#e5e7eb' },
-]
-
-const MOCK_REGIONAL_SCHEDULE = [
-  {
-    id: 'rg1',
-    title: 'Regional School Audit Meeting',
-    time: '09:30 AM - 11:30 AM',
-    subtitle: 'Addis Ababa Zonal Board',
-    category: 'schedule' as const,
-  },
-  {
-    id: 'rg2',
-    title: 'Curriculum Alignment Inspection',
-    time: '02:00 PM (Tomorrow)',
-    subtitle: '12 Target Schools',
-    category: 'upcoming' as const,
-  },
-]
+import type { UnderperformingSchool } from '@/types/api'
 
 export function RegionalDashboardPage() {
   const user = useAuthStore((s) => s.user)
   const regionId = user?.region_id
+
+  const { data: stats } = useQuery({
+    queryKey: queryKeys.regionStats(regionId ?? ''),
+    queryFn: () => getRegionStats(regionId!),
+    enabled: !!regionId,
+  })
+
+  const { data: underperforming } = useQuery({
+    queryKey: queryKeys.regionUnderperforming(regionId ?? ''),
+    queryFn: () => getUnderperformingSchools(regionId!, 10),
+    enabled: !!regionId,
+  })
+
+  const donutSegments = useMemo(() => {
+    const schools = underperforming?.schools ?? []
+    if (schools.length === 0) return []
+    const high = schools.filter((s) => s.mastery_rate >= 0.8).length
+    const mid = schools.filter((s) => s.mastery_rate >= 0.6 && s.mastery_rate < 0.8).length
+    const low = schools.filter((s) => s.mastery_rate < 0.6).length
+    return [
+      { name: 'High Performing', value: high, color: '#2d2d2e' },
+      { name: 'On Track', value: mid, color: '#6b7280' },
+      { name: 'Under Audit', value: low, color: '#e5e7eb' },
+    ].filter((s) => s.value > 0)
+  }, [underperforming])
+
+  const scheduleItems = useMemo(() => {
+    return (underperforming?.schools ?? []).slice(0, 3).map((s) => ({
+      id: s.school_id,
+      title: `${s.school_name} — Needs Support`,
+      time: `${(s.mastery_rate * 100).toFixed(0)}% mastery · ${s.flagged_topics_count} topics`,
+      subtitle: s.school_code,
+      category: 'upcoming' as const,
+    }))
+  }, [underperforming])
+
+  const avgMastery = stats?.avg_assessment_score ?? 0
 
   if (!regionId) {
     return (
@@ -68,33 +72,50 @@ export function RegionalDashboardPage() {
 
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-12">
           <div className="lg:col-span-5">
-            <PerformanceAreaChart
-              title="Regional Assessment Performance"
-              subtitle="Monthly Average Mastery Score Across Schools"
-              data={MOCK_REGIONAL_PERFORMANCE}
-            />
+            <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm h-full">
+              <h3 className="font-bold text-sm text-slate-900">Region Snapshot</h3>
+              <p className="text-xs text-slate-500 mt-0.5">Key indicators at a glance</p>
+              <div className="mt-4 grid grid-cols-2 gap-3">
+                <div className="rounded-xl bg-slate-50 p-3 border border-slate-100">
+                  <p className="text-xs text-slate-500">Schools</p>
+                  <p className="text-xl font-bold text-slate-900 mt-0.5">{stats ? formatNumber(stats.school_count) : '—'}</p>
+                </div>
+                <div className="rounded-xl bg-slate-50 p-3 border border-slate-100">
+                  <p className="text-xs text-slate-500">Students</p>
+                  <p className="text-xl font-bold text-slate-900 mt-0.5">{stats ? formatNumber(stats.student_count) : '—'}</p>
+                </div>
+                <div className="rounded-xl bg-slate-50 p-3 border border-slate-100">
+                  <p className="text-xs text-slate-500">Teachers</p>
+                  <p className="text-xl font-bold text-slate-900 mt-0.5">{stats ? formatNumber(stats.teacher_count) : '—'}</p>
+                </div>
+                <div className="rounded-xl bg-teal-50 p-3 border border-teal-100">
+                  <p className="text-xs text-teal-600">Avg Mastery</p>
+                  <p className="text-xl font-bold text-teal-800 mt-0.5">{avgMastery > 0 ? `${avgMastery.toFixed(1)}%` : '—'}</p>
+                </div>
+              </div>
+            </div>
           </div>
 
           <div className="lg:col-span-4">
             <DistributionDonutChart
               title="School Quality Distribution"
-              centerPercentage="83%"
-              centerLabel="Avg Score"
-              totalValue="83.5% Mastery"
-              segments={MOCK_REGIONAL_DONUT}
+              centerPercentage={avgMastery > 0 ? `${avgMastery.toFixed(0)}%` : '—'}
+              centerLabel="Avg Mastery"
+              totalValue={stats ? `${stats.school_count} Schools` : 'Loading…'}
+              segments={donutSegments}
               dateLabel="Active Region"
             />
           </div>
 
           <div className="lg:col-span-3">
             <ScheduleCalendarWidget
-              monthLabel="April 2026"
-              scheduleItems={MOCK_REGIONAL_SCHEDULE}
+              monthLabel={new Date().toLocaleDateString(undefined, { month: 'long', year: 'numeric' })}
+              scheduleItems={scheduleItems}
             />
           </div>
         </div>
 
-        <SchoolsSection regionId={regionId} />
+        <UnderperformingSection regionId={regionId} />
       </div>
     </AppShell>
   )
@@ -153,58 +174,102 @@ function StatsSection({ regionId }: { regionId: string }) {
   )
 }
 
-function SchoolsSection({ regionId }: { regionId: string }) {
-  const { data: schools, isLoading } = useQuery({
-    queryKey: queryKeys.schools(regionId),
-    queryFn: () => listSchools(regionId),
+function UnderperformingSection({ regionId }: { regionId: string }) {
+  const { data, isLoading, isError, error } = useQuery({
+    queryKey: queryKeys.regionUnderperforming(regionId),
+    queryFn: () => getUnderperformingSchools(regionId, 10),
   })
-  const [selectedSchoolId, setSelectedSchoolId] = useState('')
 
   return (
     <Card className="rounded-2xl border-gray-100 shadow-sm">
       <CardHeader>
-        <CardTitle className="font-display text-base font-bold">Schools in Region</CardTitle>
-        <p className="text-xs text-gray-500">Select a school to inspect its composite quality score breakdown.</p>
+        <div className="flex items-center gap-2">
+          <AlertTriangle className="h-4 w-4 text-amber-500" />
+          <CardTitle className="font-display text-base font-bold">Underperforming Schools</CardTitle>
+        </div>
+        <p className="text-xs text-gray-500">
+          Ranked by average mastery rate — lowest first. Expand a school to see its weakest topics.
+        </p>
       </CardHeader>
-      <CardContent className="space-y-4">
+      <CardContent>
         {isLoading && (
-          <div className="flex items-center gap-2 text-xs text-gray-500">
-            <Spinner /> Loading schools list...
+          <div className="flex items-center gap-2 py-4 text-xs text-gray-500">
+            <Spinner /> Loading underperforming schools...
           </div>
         )}
-        {schools && schools.length === 0 && <EmptyState title="No schools registered in this region yet." />}
-        {schools && schools.length > 0 && (
-          <Select value={selectedSchoolId} onChange={(e) => setSelectedSchoolId(e.target.value)} className="text-xs max-w-md">
-            <option value="">Select a school to review...</option>
-            {schools.map((s) => (
-              <option key={s.id} value={s.id}>
-                {s.name} ({s.code})
-              </option>
-            ))}
-          </Select>
+        {isError && <Banner tone="error">{apiErrorMessage(error, 'Could not load underperforming schools.')}</Banner>}
+        {data && data.schools.length === 0 && (
+          <EmptyState title="No school data available yet for this region." />
         )}
-        {selectedSchoolId && <SchoolQuality schoolId={selectedSchoolId} />}
+        {data && data.schools.length > 0 && (
+          <div className="divide-y divide-gray-100">
+            {data.schools.map((school, idx) => (
+              <SchoolRow key={school.school_id} school={school} rank={idx + 1} />
+            ))}
+          </div>
+        )}
       </CardContent>
     </Card>
   )
 }
 
-function SchoolQuality({ schoolId }: { schoolId: string }) {
-  const { data, isLoading, isError, error } = useQuery({
-    queryKey: queryKeys.schoolQuality(schoolId),
-    queryFn: () => getSchoolQualityScores(schoolId),
-  })
+function SchoolRow({ school, rank }: { school: UnderperformingSchool; rank: number }) {
+  const [expanded, setExpanded] = useState(false)
 
-  if (isLoading) {
-    return (
-      <div className="flex items-center gap-2 text-xs text-gray-500">
-        <Spinner /> Loading school quality scores...
-      </div>
-    )
-  }
-  if (isError) return <Banner tone="error">{apiErrorMessage(error, 'Could not load quality scores.')}</Banner>
-  if (!data || data.scores.length === 0) {
-    return <EmptyState title="No quality scores computed for this school yet." />
-  }
-  return <QualityScoreGrid scores={data.scores} />
+  const masteryColor =
+    school.mastery_rate < 0.5
+      ? 'bg-red-50 text-red-700'
+      : school.mastery_rate < 0.7
+        ? 'bg-amber-50 text-amber-700'
+        : 'bg-emerald-50 text-emerald-700'
+
+  return (
+    <div className="py-3">
+      <button
+        className="flex w-full items-center gap-3 text-left"
+        onClick={() => setExpanded((v) => !v)}
+        aria-expanded={expanded}
+      >
+        <span className="w-6 text-center text-xs font-bold text-gray-400">#{rank}</span>
+        <div className="flex-1 min-w-0">
+          <p className="truncate text-sm font-semibold text-gray-900">{school.school_name}</p>
+          <p className="text-xs text-gray-500">{school.school_code}</p>
+        </div>
+        <span className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-bold ${masteryColor}`}>
+          {formatPercent(school.mastery_rate * 100)}
+        </span>
+        <span className="text-xs text-gray-400">
+          {school.flagged_topics_count} flagged topic{school.flagged_topics_count !== 1 ? 's' : ''}
+        </span>
+        {expanded ? (
+          <ChevronUp className="h-4 w-4 text-gray-400 shrink-0" />
+        ) : (
+          <ChevronDown className="h-4 w-4 text-gray-400 shrink-0" />
+        )}
+      </button>
+
+      {expanded && (
+        <div className="mt-2 pl-9">
+          {school.top_weak_topics.length === 0 ? (
+            <p className="text-xs text-gray-400">No topic breakdown available.</p>
+          ) : (
+            <div className="flex flex-wrap gap-2">
+              {school.top_weak_topics.map((t) => (
+                <span
+                  key={t.topic_id}
+                  className="inline-flex flex-col rounded-lg border border-red-100 bg-red-50 px-2.5 py-1.5 text-xs"
+                  title={`${t.affected_students} students affected`}
+                >
+                  <span className="font-medium text-red-800 leading-tight">{t.topic_title}</span>
+                  <span className="text-red-500 leading-tight">
+                    {formatPercent(t.avg_mastery * 100)} avg · {t.affected_students} students
+                  </span>
+                </span>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  )
 }

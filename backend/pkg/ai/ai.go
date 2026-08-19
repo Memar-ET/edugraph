@@ -18,14 +18,23 @@ type Client struct {
 }
 
 // NewClient accepts "host:port" or a full URL (AI_SERVICE_URL defaults to
-// "ai-service:8000", scheme-less). Timeout covers the tutor's synchronous
-// Gemini round-trip (the ai-service caps its own model call at 30s), not
-// just the fast local inference endpoints.
+// "ai-service:8000", scheme-less). Timeout must cover ai-service's own
+// worst case, not just the fast local inference endpoints: the tutor's
+// generate_with_fallback (app/utils/llm_provider.py) tries local Ollama
+// first (OLLAMA_TIMEOUT_SECONDS=150s) and only falls back to Gemini
+// (GEMINI_TIMEOUT_SECONDS=30s) if that fails/times out, so a single
+// request can legitimately take up to ~180s under load before ai-service
+// itself gives up. A 60s client timeout here used to be shorter than
+// ai-service's own Ollama budget, so Go would abandon the request
+// (surfacing as a bare "server disconnected" to the caller) while
+// ai-service was still working -- caught via real local-LLM tutor calls
+// under load, not a hypothetical. 210s gives headroom above the 150+30
+// worst case.
 func NewClient(baseURL string) *Client {
 	if !strings.Contains(baseURL, "://") {
 		baseURL = "http://" + baseURL
 	}
-	return &Client{baseURL: strings.TrimSuffix(baseURL, "/"), http: &http.Client{Timeout: 60 * time.Second}}
+	return &Client{baseURL: strings.TrimSuffix(baseURL, "/"), http: &http.Client{Timeout: 210 * time.Second}}
 }
 
 type CareerMatchRequest struct {
@@ -61,6 +70,17 @@ func (c *Client) TutorAsk(ctx context.Context, req TutorAskRequest) (*TutorAskRe
 		return nil, err
 	}
 	return &out, nil
+}
+
+// NationalInsights calls POST /api/v1/insights/national on the ai-service
+// and returns the structured JSON response as a generic map. The caller
+// (ministry/service/insights.go) is responsible for mapping the map into DTOs.
+func (c *Client) NationalInsights(ctx context.Context, payload map[string]any) (map[string]any, error) {
+	var out map[string]any
+	if err := c.post(ctx, "/api/v1/insights/national", payload, &out); err != nil {
+		return nil, err
+	}
+	return out, nil
 }
 
 // MatchCareers calls POST /api/v1/career/match on the ai-service.

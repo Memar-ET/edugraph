@@ -20,6 +20,10 @@ dev-frontend: ## Start frontend dev server
 dev-ai: ## Start AI service
 	cd ai-service && uvicorn app.main:app --reload --port 8000
 
+download-embedding-model: ## Pre-download and cache local sentence-transformers embedding model
+	cd ai-service && python scripts/download_embedding_model.py
+
+
 # ── Test ─────────────────────────────────────────────────────
 test: test-backend test-frontend test-ai ## Run all tests
 

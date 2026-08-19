@@ -15,13 +15,15 @@ import (
 var ErrNotValidated = errors.New("exam has not been validated yet")
 
 type ExamForValidation struct {
-	ID          uuid.UUID
-	SchoolID    uuid.UUID
-	SubjectCode string
-	GradeLevel  int
-	ExamScope   string
-	UnitNumbers []int
-	Status      string
+	ID               uuid.UUID
+	SchoolID         uuid.UUID
+	SubjectCode      string
+	GradeLevel       int
+	ExamScope        string
+	UnitNumbers      []int
+	Status           string
+	AttemptLimit     int
+	TimeLimitMinutes *int
 }
 
 // FetchExamForValidation is the scope input for ValidateExam (subject/
@@ -31,12 +33,16 @@ type ExamForValidation struct {
 // verify a student/upload belongs to the same school as the exam.
 func (r *Repository) FetchExamForValidation(ctx context.Context, examID uuid.UUID) (*ExamForValidation, error) {
 	const q = `
-		SELECT id, school_id, subject_code, grade_level, exam_scope, unit_numbers, status
+		SELECT id, school_id, subject_code, grade_level, exam_scope, unit_numbers, status,
+		       attempt_limit, time_limit_minutes
 		FROM assessment.exams
 		WHERE id = $1
 	`
 	var e ExamForValidation
-	err := r.pool.QueryRow(ctx, q, examID).Scan(&e.ID, &e.SchoolID, &e.SubjectCode, &e.GradeLevel, &e.ExamScope, &e.UnitNumbers, &e.Status)
+	err := r.pool.QueryRow(ctx, q, examID).Scan(
+		&e.ID, &e.SchoolID, &e.SubjectCode, &e.GradeLevel, &e.ExamScope, &e.UnitNumbers, &e.Status,
+		&e.AttemptLimit, &e.TimeLimitMinutes,
+	)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, ErrNotFound
 	}

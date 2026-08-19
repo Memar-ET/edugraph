@@ -5,12 +5,21 @@ import { AppShell } from '@components/layout'
 import { Banner, Button, Card, CardContent, CardHeader, CardTitle, Spinner, StatusPill } from '@components/ui'
 import { ScoreGauge } from '@components/charts'
 import { apiErrorMessage } from '@lib/api/client'
-import { getExamQuality } from '@lib/api/endpoints'
+import { getExamIntegritySummary, getExamQuality } from '@lib/api/endpoints'
 import { queryKeys } from '@lib/query/keys'
 import { formatDateTime } from '@lib/utils/date'
 import { formatPercent, formatSignedScore } from '@lib/utils/format'
 
 const CALIBRATION_TONE = { accurate: 'health', mismatch: 'alert', unrated: 'neutral' } as const
+
+const INTEGRITY_EVENT_LABELS: Record<string, string> = {
+  tab_hidden: 'Tab switched away',
+  tab_visible: 'Tab returned to',
+  fullscreen_entered: 'Entered fullscreen',
+  fullscreen_exited: 'Exited fullscreen',
+  connection_lost: 'Connection lost',
+  connection_restored: 'Connection restored',
+}
 
 export function ExamQualityPage() {
   const { examId } = useParams({ from: '/teacher/exams/$examId/quality' })
@@ -20,6 +29,12 @@ export function ExamQualityPage() {
     queryKey: queryKeys.examQuality(examId),
     queryFn: () => getExamQuality(examId),
   })
+
+  const integrityQuery = useQuery({
+    queryKey: queryKeys.examIntegrity(examId),
+    queryFn: () => getExamIntegritySummary(examId),
+  })
+  const integrityEntries = Object.entries(integrityQuery.data ?? {}).filter(([, count]) => count > 0)
 
   return (
     <AppShell title="Exam quality report" description="Capability 4B — retroactively grading the exam itself.">
@@ -59,6 +74,26 @@ export function ExamQualityPage() {
                 </div>
               </CardContent>
             </Card>
+
+            {/* Integrity signals: plain counts across every attempt on this
+                exam, never a per-student breakdown or an accusation -- a
+                tab switch can happen for entirely innocent reasons (a
+                notification, an accidental click), so this is framed as
+                "N visibility changes," not "N students cheated." */}
+            {!integrityQuery.isLoading && integrityEntries.length > 0 && (
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-sm">Integrity signals</CardTitle>
+                </CardHeader>
+                <CardContent className="flex flex-wrap gap-3 pt-0">
+                  {integrityEntries.map(([type, count]) => (
+                    <StatusPill key={type} tone="neutral">
+                      {count} {INTEGRITY_EVENT_LABELS[type] ?? type}
+                    </StatusPill>
+                  ))}
+                </CardContent>
+              </Card>
+            )}
 
             <div className="grid gap-6 md:grid-cols-2">
               <Card>

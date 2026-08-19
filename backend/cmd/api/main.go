@@ -11,6 +11,7 @@ import (
 	storagepkg "github.com/edugraph-ai/edugraph/pkg/storage"
 
 	assessmenthandler "github.com/edugraph-ai/edugraph/internal/assessment/handler"
+	"github.com/edugraph-ai/edugraph/internal/assessment/examworker"
 	"github.com/edugraph-ai/edugraph/internal/assessment/qualityworker"
 	assessmentrepo "github.com/edugraph-ai/edugraph/internal/assessment/repository"
 	assessmentsvc "github.com/edugraph-ai/edugraph/internal/assessment/service"
@@ -36,9 +37,17 @@ import (
 	ministryrepo "github.com/edugraph-ai/edugraph/internal/ministry/repository"
 	ministrysvc "github.com/edugraph-ai/edugraph/internal/ministry/service"
 
+	modelinghandler "github.com/edugraph-ai/edugraph/internal/modeling/handler"
+	modelingrepo "github.com/edugraph-ai/edugraph/internal/modeling/repository"
+	modelingsvc "github.com/edugraph-ai/edugraph/internal/modeling/service"
+
 	notificationhandler "github.com/edugraph-ai/edugraph/internal/notification/handler"
 	notificationrepo "github.com/edugraph-ai/edugraph/internal/notification/repository"
 	notificationsvc "github.com/edugraph-ai/edugraph/internal/notification/service"
+
+	reportshandler "github.com/edugraph-ai/edugraph/internal/reports/handler"
+	reportsrepo "github.com/edugraph-ai/edugraph/internal/reports/repository"
+	reportssvc "github.com/edugraph-ai/edugraph/internal/reports/service"
 
 	regionhandler "github.com/edugraph-ai/edugraph/internal/region/handler"
 	regionrepo "github.com/edugraph-ai/edugraph/internal/region/repository"
@@ -71,6 +80,7 @@ import (
 	"github.com/edugraph-ai/edugraph/pkg/database/postgres"
 	"github.com/edugraph-ai/edugraph/pkg/database/redis"
 	"github.com/edugraph-ai/edugraph/pkg/logger"
+	"github.com/edugraph-ai/edugraph/pkg/metrics"
 	"github.com/edugraph-ai/edugraph/pkg/telemetry"
 )
 
@@ -154,7 +164,7 @@ func main() {
 	teacherHandler := teacherhandler.New(teacherService)
 
 	ministryRepository := ministryrepo.New(pgPool)
-	ministryService := ministrysvc.New(ministryRepository)
+	ministryService := ministrysvc.New(ministryRepository, aiClient)
 	ministryHandler := ministryhandler.New(ministryService)
 
 	// ... existing code ...
@@ -187,6 +197,23 @@ func main() {
 	// "nightly Celery batch job" -- Go ticker here, no Celery by design).
 	go qualityworker.Run(syncWorkerCtx, assessmentService, 24*time.Hour, log)
 
+	// Production-hardening pass: auto-submits exam attempts whose
+	// server-set expires_at has passed. 30s keeps the gap between "time
+	// technically expired" and "actually finalized" small.
+	go examworker.Run(syncWorkerCtx, assessmentService, 30*time.Second, log)
+
+	// Metrics: poll Redis queue depths every 30 s and expose a JSON
+	// /metrics endpoint on :9090 (internal — not the public load-balancer
+	// port). Prometheus can scrape this via a custom JSON exporter, or
+	// Grafana can query it directly via the JSON datasource plugin.
+	metrics.StartQueuePoller(syncWorkerCtx, redisClient)
+	go func() {
+		log.Info("metrics server starting", logger.String("addr", ":9090"))
+		if err := http.ListenAndServe(":9090", metrics.Handler()); err != nil && err != http.ErrServerClosed {
+			log.Error("metrics server error", logger.Error(err))
+		}
+	}()
+
 	careerRepository := careerrepo.New(pgPool, neo4jDriver)
 	careerService := careersvc.New(careerRepository, aiClient)
 	careerHandler := careerhandler.New(careerService)
@@ -206,6 +233,17 @@ func main() {
 	storageService := storagesvc.New(storageRepo, cfg.AWS)
 	storageHandler := storagehandler.New(storageService)
 
+	// EG-GCKT Milestone 9: model-governance review queue for BKT/DINA/IRT
+	// nightly refit candidates (ai-service/app/workers/refit_worker.py).
+	modelingRepository := modelingrepo.New(pgPool)
+	modelingService := modelingsvc.New(modelingRepository)
+	modelingHandler := modelinghandler.New(modelingService)
+
+	// Phase 12: async report generation (school_monthly, national_heatmap, clo_coverage).
+	reportsRepository := reportsrepo.New(pgPool)
+	reportsService := reportssvc.New(reportsRepository, redisClient)
+	reportsHandler := reportshandler.New(reportsService)
+
 	// Router
 	router := newRouter(cfg, log, authService, syncService, handlers{
 		auth:         authHandler,
@@ -221,6 +259,8 @@ func main() {
 		notification: notificationHandler,
 		jobs:         jobsHandler,
 		storage:      storageHandler,
+		modeling:     modelingHandler,
+		reports:      reportsHandler,
 	})
 
 	srv := &http.Server{

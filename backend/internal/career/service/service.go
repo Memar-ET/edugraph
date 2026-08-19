@@ -20,7 +20,7 @@ func New(repo *repository.Repository, aiClient *ai.Client) *Service {
 }
 
 func (s *Service) Create(ctx context.Context, req dto.CreateCareerPathRequest) (dto.CareerPathResponse, error) {
-	cp, err := s.repo.Create(ctx, req.Title, nilIfEmpty(req.Description), req.RequiredSubjects)
+	cp, err := s.repo.Create(ctx, req.Title, nilIfEmpty(req.Description), req.Sector, req.MinEduLevel)
 	if err != nil {
 		return dto.CareerPathResponse{}, apperrors.Internal(err)
 	}

@@ -12,8 +12,14 @@ type AnswerInput struct {
 	TimeSpentSecs *int      `json:"timeSpentSecs" validate:"omitempty,gte=0"`
 }
 
+// IdempotencyKey is client-generated (one per attempt, see TakeExamPage's
+// sessionStorage-backed key) so a double-click or a network-retried
+// submit resolves to the same attempt instead of erroring or -- before
+// this was wired up -- silently being accepted twice. See
+// idx_exam_attempts_idempotency (V057) and Repository.SubmitAndFinalize.
 type SubmitExamRequest struct {
-	Answers []AnswerInput `json:"answers" validate:"required,min=1,dive"`
+	Answers        []AnswerInput `json:"answers" validate:"required,min=1,dive"`
+	IdempotencyKey *uuid.UUID    `json:"idempotencyKey,omitempty"`
 }
 
 // SubmitExamResponse: TotalScore/Percentage/Passed are nil until every

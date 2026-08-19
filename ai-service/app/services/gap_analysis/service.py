@@ -11,10 +11,16 @@ attempt id onto queue:gap:analyze from SubmitExam / BulkGradeExam):
   prerequisite graph from each symptom topic (Neo4j HAS_PREREQUISITE
   first, falling back to Postgres curriculum.topic_prerequisites -- see
   app/db/neo4j.py for the write path and current population status) and
-  find the deepest prerequisite the student has EVIDENCE of being weak in
-  (< WEAK_THRESHOLD mastery across their graded answer history /
-  mastery_records). No evidence is not weakness: a prerequisite the
-  student was never assessed on is never blamed.
+  score every sufficiently-weak candidate in the chain with the EG-GCKT
+  Root Cause Score (spec section 9, app/services/gap_analysis/
+  root_cause.py) rather than simply picking the deepest weak node --
+  RCS weighs weakness against evidence confidence, how many other topics
+  depend on fixing this one, whether the candidate's OWN prerequisites are
+  ready, and the resulting intervention gain, so a numerically "weaker"
+  downstream symptom doesn't get blamed ahead of the upstream topic that
+  actually explains it (see the module's docstring for the worked
+  example). No evidence is not weakness: a prerequisite the student was
+  never assessed on is never blamed.
 
   Pass 3 -- LLM Synthesis (the "why"): one call turns the symptom/root-cause
   pairs into per-gap explanations plus an exam-level narrative (English +
@@ -34,13 +40,14 @@ import structlog
 
 from app.db import neo4j as neo4j_db
 from app.db import postgres_gap as db
+from app.services.gap_analysis import misconception, root_cause
 from app.services.gap_analysis.llm import MAX_GAPS_TO_EXPLAIN, synthesize_insights
 
 logger = structlog.get_logger()
 
-# Below this mastery ratio (0..1) a prerequisite counts as a break in the
-# chain. Matches the attempt-level pass threshold (50%).
-WEAK_THRESHOLD = 0.5
+# The weak-mastery cutoff now lives in root_cause.WEAK_THRESHOLD (Milestone
+# 5) -- kept as one shared value rather than a second copy that could
+# silently drift from it.
 MAX_PREREQ_DEPTH = 3
 
 
@@ -92,6 +99,7 @@ async def process_gap_job(attempt_id: str) -> None:
             {
                 "question_id": str(r["question_id"]),
                 "question_text": r["question_text"],
+                "answer_text": r["answer_text"],
                 "sequence_number": r["sequence_number"],
                 "clo_code": r["clo_code"],
                 "symptom_topic_id": topic_id,
@@ -114,13 +122,9 @@ async def process_gap_job(attempt_id: str) -> None:
 
     root_causes: dict[str, dict] = {}
     for topic_id, chain in chains.items():
-        weak = [c for c in chain if mastery.get(c["id"], 1.0) < WEAK_THRESHOLD]
-        if weak:
-            # The break in the chain: the deepest weak prerequisite (the
-            # most foundational), lowest mastery as tie-breaker.
-            root_causes[topic_id] = max(
-                weak, key=lambda c: (c["depth"], -mastery.get(c["id"], 1.0))
-            )
+        rc = await root_cause.score_candidates(student_id, chain, mastery)
+        if rc:
+            root_causes[topic_id] = rc
 
     for g in gaps:
         rc = root_causes.get(g["symptom_topic_id"])
@@ -129,6 +133,9 @@ async def process_gap_job(attempt_id: str) -> None:
             g["root_cause_topic_title"] = rc["title"]
             g["root_cause_grade"] = rc.get("grade_level")
             g["prerequisite_depth"] = rc["depth"]
+            g["rcs_score"] = rc.get("rcs")
+            g["rcs_factors"] = rc.get("factors")
+            g["root_cause_path"] = rc.get("path")
         else:
             g["root_cause_topic_id"] = None
             g["prerequisite_depth"] = 0
@@ -174,6 +181,25 @@ async def process_gap_job(attempt_id: str) -> None:
         subject_agg=subject_agg,
     )
 
+    # ── Milestone 6: structured misconception hypotheses ─────────────
+    # Runs after persist_analysis (not before) since it's a separate,
+    # best-effort enrichment -- an LLM/parse failure here must never
+    # affect gap_records/exam_insights, which are already durably written
+    # by this point.
+    misconceptions_written = 0
+    verifications_checked = 0
+    try:
+        misconceptions_written = await misconception.generate_hypotheses(student_id, str(attempt["school_id"]), gaps)
+        # Checked against EVERY answer on this attempt (not just missed
+        # ones) -- a correctly-answered verification item is itself
+        # evidence, weakening whatever hypothesis it was meant to test.
+        all_answers = await db.fetch_all_attempt_answers(attempt_id)
+        verifications_checked = await misconception.check_verification_responses(
+            student_id, [{"question_id": str(a["question_id"]), "correct": a["correct"]} for a in all_answers]
+        )
+    except Exception:  # noqa: BLE001 -- misconception generation is enrichment, not core analysis
+        logger.exception("gap_analysis.misconception_generation_failed", attempt_id=attempt_id)
+
     logger.info(
         "gap_analysis.completed",
         attempt_id=attempt_id,
@@ -182,6 +208,8 @@ async def process_gap_job(attempt_id: str) -> None:
         unmapped_questions=unmapped,
         llm_used=llm_model is not None,
         subject_mastery_pct=subject_agg["mastery_pct"],
+        misconceptions_written=misconceptions_written,
+        verifications_checked=verifications_checked,
     )
 
 

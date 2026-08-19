@@ -33,7 +33,7 @@ async def get_pool() -> asyncpg.Pool:
         _pool = await asyncpg.create_pool(
             dsn=settings.POSTGRES_DSN,
             min_size=1,
-            max_size=max(5, settings.POSTGRES_MAX_CONNS // 4),
+            max_size=max(8, settings.POSTGRES_MAX_CONNS // 2),
         )
     return _pool
 

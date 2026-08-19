@@ -15,6 +15,23 @@ import (
 	apperrors "github.com/edugraph-ai/edugraph/pkg/errors"
 )
 
+// errLog backs WriteError's 500-level logging. Previously WriteError
+// silently discarded every internal-error detail with no logging at all
+// (found while debugging a Supabase-migration-era regression that
+// produced only an opaque client-side 500 with no server-side trace to
+// diagnose it from) -- set once at startup via SetLogger, defaults to a
+// no-op so tests that construct middleware without wiring a logger don't
+// panic.
+var errLog = zap.NewNop()
+
+// SetLogger wires the application's real logger into WriteError's 500
+// logging. Called once from router construction (see cmd/api/router.go),
+// after the logger this package's other middleware (Logging, Recover)
+// already receive as a constructor argument is built.
+func SetLogger(log *zap.Logger) {
+	errLog = log
+}
+
 // Envelope is the standard JSON response shape for every endpoint.
 type Envelope struct {
 	Success bool   `json:"success"`
@@ -39,6 +56,9 @@ func WriteError(w http.ResponseWriter, err error) {
 	appErr, ok := apperrors.As(err)
 	if !ok {
 		appErr = apperrors.Internal(err)
+	}
+	if appErr.Status >= 500 {
+		errLog.Error("internal_error", zap.Error(err))
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(appErr.Status)

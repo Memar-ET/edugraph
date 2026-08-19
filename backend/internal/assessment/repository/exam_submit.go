@@ -234,6 +234,77 @@ func (r *Repository) RecomputeAttemptTotals(ctx context.Context, attemptID uuid.
 	return nil
 }
 
+// MarkAttemptSubmitted atomically freezes an in_progress attempt --
+// guarded by status='in_progress' so exactly one concurrent submit
+// request can ever win this race (Part 13's "verify state, then freeze,
+// then persist answers" ordering: this must run before SaveStudentAnswers,
+// not after). Returns false (not an error) if the attempt was already
+// frozen by a request that got here first -- the caller should then
+// return the existing result rather than re-grading.
+func (r *Repository) MarkAttemptSubmitted(ctx context.Context, attemptID uuid.UUID, reason string, idempotencyKey *uuid.UUID) (bool, error) {
+	tag, err := r.pool.Exec(ctx, `
+		UPDATE assessment.exam_attempts
+		SET status = $2, submission_reason = $3, idempotency_key = COALESCE(idempotency_key, $4), last_activity_at = now()
+		WHERE id = $1 AND status = 'in_progress'
+	`, attemptID, "submitted", reason, idempotencyKey)
+	if err != nil {
+		return false, fmt.Errorf("mark attempt submitted: %w", err)
+	}
+	return tag.RowsAffected() > 0, nil
+}
+
+// FetchSubmitSummary rebuilds a dto.SubmitExamResponse from an already-
+// frozen attempt's saved answers -- used both for a fresh submit and for
+// a retried/duplicate submit request that lost the MarkAttemptSubmitted
+// race, so either path returns the same shape.
+func (r *Repository) FetchSubmitSummary(ctx context.Context, attemptID uuid.UUID) (*dto.SubmitExamResponse, error) {
+	const countQ = `
+		SELECT count(*) FILTER (WHERE marks_awarded IS NOT NULL),
+		       count(*) FILTER (WHERE marks_awarded IS NULL)
+		FROM assessment.student_answers WHERE attempt_id = $1
+	`
+	var graded, pending int
+	if err := r.pool.QueryRow(ctx, countQ, attemptID).Scan(&graded, &pending); err != nil {
+		return nil, fmt.Errorf("fetch submit summary counts: %w", err)
+	}
+
+	resp := &dto.SubmitExamResponse{AttemptID: attemptID, GradedCount: graded, PendingGradingCount: pending}
+	if pending == 0 && graded > 0 {
+		total, pct, passed, err := r.FetchAttemptTotals(ctx, attemptID)
+		if err != nil {
+			return nil, err
+		}
+		resp.TotalScore, resp.Percentage, resp.Passed = total, pct, passed
+	}
+	return resp, nil
+}
+
+// FetchSubmitResultByIdempotencyKey looks up an already-submitted attempt
+// by the same (student, exam, idempotencyKey) tuple the caller is
+// retrying with -- lets a network-retried submit (the original response
+// never reached the client, but the server had already processed it)
+// return the original result instead of a confusing "no session in
+// progress" error.
+func (r *Repository) FetchSubmitResultByIdempotencyKey(ctx context.Context, studentID, examID, idempotencyKey uuid.UUID) (*dto.SubmitExamResponse, bool, error) {
+	const q = `
+		SELECT id FROM assessment.exam_attempts
+		WHERE student_id = $1 AND exam_id = $2 AND idempotency_key = $3
+	`
+	var attemptID uuid.UUID
+	err := r.pool.QueryRow(ctx, q, studentID, examID, idempotencyKey).Scan(&attemptID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, false, nil
+	}
+	if err != nil {
+		return nil, false, fmt.Errorf("fetch attempt by idempotency key: %w", err)
+	}
+	resp, err := r.FetchSubmitSummary(ctx, attemptID)
+	if err != nil {
+		return nil, false, err
+	}
+	return resp, true, nil
+}
+
 // FetchAttemptTotals reads back the finalized totals RecomputeAttemptTotals
 // wrote, so a caller that just fully graded an attempt can return them
 // without duplicating the sum logic.

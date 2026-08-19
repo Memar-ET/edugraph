@@ -12,11 +12,12 @@ const toneStyles = {
 
 export interface StatusPillProps {
   tone?: keyof typeof toneStyles
-  children: ReactNode
+  value?: ReactNode
+  children?: ReactNode
   className?: string
 }
 
-export function StatusPill({ tone = 'neutral', children, className }: StatusPillProps) {
+export function StatusPill({ tone = 'neutral', value, children, className }: StatusPillProps) {
   return (
     <span
       className={cn(
@@ -25,7 +26,7 @@ export function StatusPill({ tone = 'neutral', children, className }: StatusPill
         className,
       )}
     >
-      {children}
+      {value ?? children}
     </span>
   )
 }

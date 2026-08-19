@@ -1,12 +1,13 @@
 import { useMemo, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { ArrowRight, CheckCircle2, RefreshCw } from 'lucide-react'
+import { ArrowRight, CheckCircle2, History, RefreshCw } from 'lucide-react'
 
 import { AppShell } from '@components/layout'
 import { Banner, Button, Card, CardContent, CardHeader, CardTitle, Input, Label, Select, Spinner, StatusPill } from '@components/ui'
 import { apiErrorMessage } from '@lib/api/client'
 import {
   addTopicPrerequisite,
+  getPrerequisiteHistory,
   listTopicPrerequisites,
   listTopicsBySubject,
   resyncPrerequisites,
@@ -14,13 +15,27 @@ import {
 } from '@lib/api/endpoints'
 import { queryKeys } from '@lib/query/keys'
 import { useAuthStore } from '@stores/auth.store'
-import type { PrerequisiteInferMethod, TopicListItem } from '@/types/api'
+import type { PrerequisiteEdgeType, PrerequisiteInferMethod, TopicListItem } from '@/types/api'
 
 const INFER_METHODS: { value: PrerequisiteInferMethod; label: string }[] = [
   { value: 'manual', label: 'Manual (auto-validated)' },
   { value: 'explicit', label: 'Explicit in source (auto-validated)' },
   { value: 'moe_document', label: 'MoE document (auto-validated)' },
   { value: 'ai_inferred', label: 'AI-inferred (needs validation)' },
+]
+
+// EG-GCKT Milestone 0/11 (spec section 6.2): only requires/
+// strongly_requires are hard dependencies (cycle-checked, walked by
+// root-cause/study-plan/heatmap traversals) -- the rest are soft
+// associations, labeled here so an editor doesn't confuse the two.
+const EDGE_TYPES: { value: PrerequisiteEdgeType; label: string }[] = [
+  { value: 'requires', label: 'Requires (hard dependency)' },
+  { value: 'strongly_requires', label: 'Strongly requires (hard dependency)' },
+  { value: 'recommended_before', label: 'Recommended before' },
+  { value: 'related_to', label: 'Related to' },
+  { value: 'similar_to', label: 'Similar to (recovery route)' },
+  { value: 'supports', label: 'Supports' },
+  { value: 'alternative_to', label: 'Alternative to' },
 ]
 
 // Topics + subtopics come back as a flat, subject-scoped list (no general
@@ -41,6 +56,9 @@ export function PrerequisitesPage() {
   const [prereqTopicId, setPrereqTopicId] = useState('')
   const [weight, setWeight] = useState('1')
   const [inferMethod, setInferMethod] = useState<PrerequisiteInferMethod>('manual')
+  const [edgeType, setEdgeType] = useState<PrerequisiteEdgeType>('requires')
+  const [confidence, setConfidence] = useState('')
+  const [evidence, setEvidence] = useState('')
 
   const [addError, setAddError] = useState<string | null>(null)
   const [adding, setAdding] = useState(false)
@@ -48,6 +66,7 @@ export function PrerequisitesPage() {
   const [resyncing, setResyncing] = useState(false)
   const [resyncResult, setResyncResult] = useState<{ synced: number; failed: number } | null>(null)
   const [resyncError, setResyncError] = useState<string | null>(null)
+  const [historyFor, setHistoryFor] = useState<{ prereqId: string; edgeType: string } | null>(null)
 
   const topicsQuery = useQuery({
     queryKey: queryKeys.curriculumTopics(activeSubject ?? ''),
@@ -84,9 +103,14 @@ export function PrerequisitesPage() {
         prerequisiteTopicId: prereqTopicId,
         weight: Number(weight) || 1,
         inferMethod,
+        edgeType,
+        confidence: confidence.trim() ? Number(confidence) : undefined,
+        evidence: evidence.trim() || undefined,
       })
       await queryClient.invalidateQueries({ queryKey: queryKeys.topicPrerequisites(topicId) })
       setPrereqTopicId('')
+      setConfidence('')
+      setEvidence('')
     } catch (err) {
       setAddError(apiErrorMessage(err, 'Could not add the prerequisite link.'))
     } finally {
@@ -94,10 +118,10 @@ export function PrerequisitesPage() {
     }
   }
 
-  const handleValidate = async (prereqTopicIdToValidate: string) => {
+  const handleValidate = async (prereqTopicIdToValidate: string, linkEdgeType: string) => {
     setValidatingId(prereqTopicIdToValidate)
     try {
-      await validatePrerequisite(topicId, prereqTopicIdToValidate)
+      await validatePrerequisite(topicId, prereqTopicIdToValidate, linkEdgeType)
       await queryClient.invalidateQueries({ queryKey: queryKeys.topicPrerequisites(topicId) })
     } catch (err) {
       setAddError(apiErrorMessage(err, 'Could not validate the link.'))
@@ -204,12 +228,14 @@ export function PrerequisitesPage() {
 
                   {prereqsQuery.data && prereqsQuery.data.length > 0 && (
                     <div className="overflow-x-auto">
-                      <table className="w-full min-w-[560px] text-left text-sm">
+                      <table className="w-full min-w-[720px] text-left text-sm">
                         <thead>
                           <tr className="border-b border-gray-200 text-xs font-medium uppercase tracking-wide text-gray-500">
-                            <th className="py-2 pr-4">Requires</th>
+                            <th className="py-2 pr-4">Topic</th>
+                            <th className="py-2 pr-4">Edge type</th>
                             <th className="py-2 pr-4">Grade</th>
                             <th className="py-2 pr-4">Weight</th>
+                            <th className="py-2 pr-4">Confidence</th>
                             <th className="py-2 pr-4">Source</th>
                             <th className="py-2 pr-4">Status</th>
                             <th className="py-2" />
@@ -217,7 +243,7 @@ export function PrerequisitesPage() {
                         </thead>
                         <tbody className="divide-y divide-gray-100">
                           {prereqsQuery.data.map((link) => (
-                            <tr key={link.prerequisiteTopicId}>
+                            <tr key={`${link.prerequisiteTopicId}-${link.edgeType}`}>
                               <td className="py-3 pr-4 font-medium text-gray-900">
                                 {link.prerequisiteTitle}
                                 {link.isCrossGrade && (
@@ -226,8 +252,12 @@ export function PrerequisitesPage() {
                                   </StatusPill>
                                 )}
                               </td>
+                              <td className="py-3 pr-4 text-gray-500">{link.edgeType}</td>
                               <td className="py-3 pr-4 text-gray-500">{link.prerequisiteGrade}</td>
                               <td className="py-3 pr-4 text-gray-500">{link.weight.toFixed(2)}</td>
+                              <td className="py-3 pr-4 text-gray-500">
+                                {link.confidence !== undefined ? link.confidence.toFixed(2) : '—'}
+                              </td>
                               <td className="py-3 pr-4 text-gray-500">{link.inferMethod}</td>
                               <td className="py-3 pr-4">
                                 <StatusPill tone={link.isValidated ? 'health' : 'alert'}>
@@ -235,17 +265,27 @@ export function PrerequisitesPage() {
                                 </StatusPill>
                               </td>
                               <td className="py-3 text-right">
-                                {!link.isValidated && (
+                                <div className="flex justify-end gap-2">
+                                  {!link.isValidated && (
+                                    <Button
+                                      variant="secondary"
+                                      size="sm"
+                                      isLoading={validatingId === link.prerequisiteTopicId}
+                                      onClick={() => void handleValidate(link.prerequisiteTopicId, link.edgeType)}
+                                    >
+                                      <CheckCircle2 className="h-4 w-4" aria-hidden />
+                                      Validate
+                                    </Button>
+                                  )}
                                   <Button
-                                    variant="secondary"
+                                    variant="ghost"
                                     size="sm"
-                                    isLoading={validatingId === link.prerequisiteTopicId}
-                                    onClick={() => void handleValidate(link.prerequisiteTopicId)}
+                                    onClick={() => setHistoryFor({ prereqId: link.prerequisiteTopicId, edgeType: link.edgeType })}
                                   >
-                                    <CheckCircle2 className="h-4 w-4" aria-hidden />
-                                    Validate
+                                    <History className="h-4 w-4" aria-hidden />
+                                    History
                                   </Button>
-                                )}
+                                </div>
                               </td>
                             </tr>
                           ))}
@@ -276,6 +316,21 @@ export function PrerequisitesPage() {
                         </Select>
                       </div>
                       <div>
+                        <Label htmlFor="edgeType">Edge type</Label>
+                        <Select
+                          id="edgeType"
+                          value={edgeType}
+                          onChange={(e) => setEdgeType(e.target.value as PrerequisiteEdgeType)}
+                          className="w-64"
+                        >
+                          {EDGE_TYPES.map((t) => (
+                            <option key={t.value} value={t.value}>
+                              {t.label}
+                            </option>
+                          ))}
+                        </Select>
+                      </div>
+                      <div>
                         <Label htmlFor="weight">Weight</Label>
                         <Input
                           id="weight"
@@ -286,6 +341,20 @@ export function PrerequisitesPage() {
                           value={weight}
                           onChange={(e) => setWeight(e.target.value)}
                           className="w-24"
+                        />
+                      </div>
+                      <div>
+                        <Label htmlFor="confidence">Confidence (optional)</Label>
+                        <Input
+                          id="confidence"
+                          type="number"
+                          min={0}
+                          max={1}
+                          step={0.1}
+                          value={confidence}
+                          onChange={(e) => setConfidence(e.target.value)}
+                          placeholder="0.0–1.0"
+                          className="w-28"
                         />
                       </div>
                       <div>
@@ -303,12 +372,30 @@ export function PrerequisitesPage() {
                           ))}
                         </Select>
                       </div>
+                      <div className="min-w-[220px] flex-1">
+                        <Label htmlFor="evidence">Evidence (optional)</Label>
+                        <Input
+                          id="evidence"
+                          value={evidence}
+                          onChange={(e) => setEvidence(e.target.value)}
+                          placeholder="Short justification or citation"
+                        />
+                      </div>
                       <Button isLoading={adding} disabled={!prereqTopicId} onClick={() => void handleAdd()}>
                         <ArrowRight className="h-4 w-4" aria-hidden />
                         Add link
                       </Button>
                     </div>
                   </div>
+
+                  {historyFor && (
+                    <PrerequisiteHistoryPanel
+                      topicId={topicId}
+                      prereqId={historyFor.prereqId}
+                      edgeType={historyFor.edgeType}
+                      onClose={() => setHistoryFor(null)}
+                    />
+                  )}
                 </div>
               )}
             </CardContent>
@@ -340,5 +427,59 @@ export function PrerequisitesPage() {
         )}
       </div>
     </AppShell>
+  )
+}
+
+// EG-GCKT Milestone 11: the append-only review history for one
+// prerequisite edge (curriculum.prerequisite_review_history) -- every
+// created/validated/confidence_changed/superseded event, not just the
+// current reviewed_by/confirmed_at snapshot the table row shows.
+function PrerequisiteHistoryPanel({
+  topicId,
+  prereqId,
+  edgeType,
+  onClose,
+}: {
+  topicId: string
+  prereqId: string
+  edgeType: string
+  onClose: () => void
+}) {
+  const historyQuery = useQuery({
+    queryKey: queryKeys.prerequisiteHistory(topicId, prereqId, edgeType),
+    queryFn: () => getPrerequisiteHistory(topicId, prereqId, edgeType),
+  })
+
+  return (
+    <div className="rounded-lg border border-gray-100 bg-gray-50 p-4">
+      <div className="mb-3 flex items-center justify-between">
+        <h4 className="text-sm font-medium text-gray-900">Review history ({edgeType})</h4>
+        <Button variant="ghost" size="sm" onClick={onClose}>
+          Close
+        </Button>
+      </div>
+      {historyQuery.isLoading && (
+        <div className="flex items-center gap-2 text-sm text-gray-500">
+          <Spinner /> Loading history…
+        </div>
+      )}
+      {historyQuery.isError && (
+        <Banner tone="error">{apiErrorMessage(historyQuery.error, 'Could not load review history.')}</Banner>
+      )}
+      {historyQuery.data && historyQuery.data.length === 0 && (
+        <p className="text-sm text-gray-500">No history recorded for this edge yet.</p>
+      )}
+      {historyQuery.data && historyQuery.data.length > 0 && (
+        <ol className="space-y-2 border-l-2 border-gray-200 pl-4">
+          {historyQuery.data.map((entry) => (
+            <li key={entry.id} className="text-sm">
+              <span className="font-medium text-gray-900">{entry.action}</span>{' '}
+              <span className="text-gray-500">{new Date(entry.reviewedAt).toLocaleString()}</span>
+              {entry.notes && <p className="text-gray-500">{entry.notes}</p>}
+            </li>
+          ))}
+        </ol>
+      )}
+    </div>
   )
 }

@@ -1,5 +1,13 @@
 import { apiClient } from './client'
 import type {
+  AnswerInput,
+  AvailableExamsResponse,
+  ExamDraftResponse,
+  ExamScope,
+  ExamStatusValue,
+  NationalInsightsResponse,
+  SkillStatesResponse,
+  UnderperformingResponse,
   AddPrerequisiteRequest,
   AddPrerequisiteResponse,
   ApproveRequest,
@@ -13,6 +21,7 @@ import type {
   CreateCareerPathRequest,
   CreateNotificationRequest,
   Envelope,
+  Explanation,
   ExamInsight,
   ExamInsightListEntry,
   ExamQualityResponse,
@@ -21,21 +30,29 @@ import type {
   GenerateStudyPlanRequest,
   GenerateStudyPlanResponse,
   GradingQuestion,
+  IntegrityEventInput,
   JobListItem,
   JobStatus,
   LoginRequest,
   PaginationMeta,
   MinistryOverviewResponse,
+  MisconceptionHypothesis,
+  ModelSnapshot,
   NotificationResponse,
   PrerequisiteLink,
+  PrerequisiteQualityReport,
+  PrerequisiteReviewHistoryEntry,
   PublishResponse,
+  QMatrixQualityReport,
   RegionResponse,
   RegionStatsResponse,
   ResyncPrerequisitesResponse,
   SchoolQualityResponse,
   SchoolResponse,
+  SkillStateSnapshot,
   StudentResponse,
   StudyPlan,
+  StartAttemptResponse,
   SubjectGraph,
   SubjectListItem,
   SubjectProfile,
@@ -222,9 +239,36 @@ export async function publishExam(examId: string): Promise<PublishResponse> {
   return unwrap(res.data)
 }
 
+// startExamAttempt creates (or, if one is already open, resumes) the
+// caller's exam session -- server-authoritative timer/randomization/
+// resume all anchor off the attempt this creates. Idempotent while an
+// attempt is in_progress: calling it again (e.g. after a refresh)
+// returns the exact same attempt/question order, never a new one. Must
+// be called before listExamQuestions/autosaveExamAnswers/submitExam.
+export async function startExamAttempt(examId: string): Promise<StartAttemptResponse> {
+  const res = await apiClient.post<Envelope<StartAttemptResponse>>(`/exams/${examId}/start`)
+  return unwrap(res.data)
+}
+
 export async function listExamQuestions(examId: string): Promise<ExamQuestion[]> {
   const res = await apiClient.get<Envelope<ExamQuestion[]>>(`/exams/${examId}/questions`)
   return unwrap(res.data)
+}
+
+// getExamIntegritySummary returns per-event-type counts across every
+// attempt on this exam -- e.g. { tab_hidden: 12, connection_lost: 2 }.
+// Plain counts, never a per-student breakdown or an accusation.
+export async function getExamIntegritySummary(examId: string): Promise<Record<string, number>> {
+  const res = await apiClient.get<Envelope<Record<string, number>>>(`/exams/${examId}/integrity`)
+  return unwrap(res.data)
+}
+
+// reportIntegrityEvents batches client-observed exam-integrity signals
+// (tab visibility, fullscreen, connection status) for the caller's
+// current attempt. Best-effort/diagnostic -- a failed request here must
+// never block or interrupt the exam itself.
+export async function reportIntegrityEvents(examId: string, events: IntegrityEventInput[]): Promise<void> {
+  await apiClient.post(`/exams/${examId}/attempts/current/events`, { events })
 }
 
 export async function submitExam(examId: string, payload: SubmitExamRequest): Promise<SubmitExamResponse> {
@@ -351,6 +395,18 @@ export async function getRegionStats(regionId: string): Promise<RegionStatsRespo
   return unwrap(res.data)
 }
 
+export async function getUnderperformingSchools(regionId: string, limit = 10): Promise<UnderperformingResponse> {
+  const res = await apiClient.get<Envelope<UnderperformingResponse>>(
+    `/ministry/regions/${regionId}/underperforming?limit=${limit}`,
+  )
+  return unwrap(res.data)
+}
+
+export async function getNationalInsights(): Promise<NationalInsightsResponse> {
+  const res = await apiClient.post<Envelope<NationalInsightsResponse>>('/ministry/curriculum-insights', {})
+  return unwrap(res.data)
+}
+
 export async function listRegions(): Promise<RegionResponse[]> {
   const res = await apiClient.get<Envelope<RegionResponse[]>>('/regions', { params: { limit: 100 } })
   return unwrap(res.data)
@@ -418,15 +474,33 @@ export async function addTopicPrerequisite(
   return unwrap(res.data)
 }
 
-export async function validatePrerequisite(topicId: string, prereqId: string): Promise<AddPrerequisiteResponse> {
+export async function validatePrerequisite(
+  topicId: string,
+  prereqId: string,
+  edgeType?: string,
+): Promise<AddPrerequisiteResponse> {
   const res = await apiClient.patch<Envelope<AddPrerequisiteResponse>>(
     `/curriculum/topics/${topicId}/prerequisites/${prereqId}/validate`,
+    undefined,
+    { params: { edgeType } },
   )
   return unwrap(res.data)
 }
 
 export async function resyncPrerequisites(): Promise<ResyncPrerequisitesResponse> {
   const res = await apiClient.post<Envelope<ResyncPrerequisitesResponse>>('/curriculum/prerequisites/resync')
+  return unwrap(res.data)
+}
+
+export async function getPrerequisiteHistory(
+  topicId: string,
+  prereqId: string,
+  edgeType?: string,
+): Promise<PrerequisiteReviewHistoryEntry[]> {
+  const res = await apiClient.get<Envelope<PrerequisiteReviewHistoryEntry[]>>(
+    `/curriculum/topics/${topicId}/prerequisites/${prereqId}/history`,
+    { params: { edgeType } },
+  )
   return unwrap(res.data)
 }
 
@@ -460,4 +534,231 @@ export async function getSubjectGraph(subjectCode: string, includeClos = false):
     { params: { includeClos: includeClos ? 'true' : undefined } },
   )
   return unwrap(res.data)
+}
+
+// ── EG-GCKT model governance (Milestone 9) ────────────────────────
+
+export async function listCandidateModelSnapshots(): Promise<ModelSnapshot[]> {
+  const res = await apiClient.get<Envelope<ModelSnapshot[]>>('/model-snapshots/candidates')
+  return unwrap(res.data)
+}
+
+export async function promoteModelSnapshot(id: string): Promise<ModelSnapshot> {
+  const res = await apiClient.post<Envelope<ModelSnapshot>>(`/model-snapshots/${id}/promote`)
+  return unwrap(res.data)
+}
+
+export async function rejectModelSnapshot(id: string): Promise<ModelSnapshot> {
+  const res = await apiClient.post<Envelope<ModelSnapshot>>(`/model-snapshots/${id}/reject`)
+  return unwrap(res.data)
+}
+
+// ── EG-GCKT misconception review queue (Milestone 6) ──────────────
+
+export async function listCandidateMisconceptions(): Promise<MisconceptionHypothesis[]> {
+  const res = await apiClient.get<Envelope<MisconceptionHypothesis[]>>('/misconceptions')
+  return unwrap(res.data)
+}
+
+export async function reviewMisconception(
+  id: string,
+  decision: 'confirmed' | 'rejected',
+): Promise<MisconceptionHypothesis> {
+  const res = await apiClient.patch<Envelope<MisconceptionHypothesis>>(`/misconceptions/${id}/review`, { decision })
+  return unwrap(res.data)
+}
+
+// ── EG-GCKT quality reports ────────────────────────────────────────
+
+export async function getQMatrixQuality(subjectCode: string): Promise<QMatrixQualityReport> {
+  const res = await apiClient.get<Envelope<QMatrixQualityReport>>(
+    `/curriculum/subjects/${encodeURIComponent(subjectCode)}/qmatrix-quality`,
+  )
+  return unwrap(res.data)
+}
+
+export async function getPrerequisiteQuality(subjectCode: string): Promise<PrerequisiteQualityReport> {
+  const res = await apiClient.get<Envelope<PrerequisiteQualityReport>>(
+    `/curriculum/subjects/${encodeURIComponent(subjectCode)}/prerequisite-quality`,
+  )
+  return unwrap(res.data)
+}
+
+// ── EG-GCKT explainability (Milestone 11) ─────────────────────────
+
+export async function getExplanation(studentId: string, topicId: string): Promise<Explanation> {
+  const res = await apiClient.get<Envelope<Explanation>>(`/students/${studentId}/topics/${topicId}/explain`)
+  return unwrap(res.data)
+}
+
+export async function getSkillStateSnapshots(studentId: string, topicId: string): Promise<SkillStateSnapshot[]> {
+  const res = await apiClient.get<Envelope<SkillStateSnapshot[]>>(
+    `/students/${studentId}/topics/${topicId}/state-snapshots`,
+  )
+  return unwrap(res.data)
+}
+
+// ── Student skill states (EG-GCKT) ────────────────────────────────
+
+export async function getMySkillStates(): Promise<SkillStatesResponse> {
+  const res = await apiClient.get<Envelope<SkillStatesResponse>>('/students/me/skill-states')
+  return unwrap(res.data)
+}
+
+export async function getStudentSkillStates(studentId: string): Promise<SkillStatesResponse> {
+  const res = await apiClient.get<Envelope<SkillStatesResponse>>(`/students/${studentId}/skill-states`)
+  return unwrap(res.data)
+}
+
+// ── Student available exams ────────────────────────────────────────
+
+export async function getAvailableExams(): Promise<AvailableExamsResponse> {
+  const res = await apiClient.get<Envelope<AvailableExamsResponse>>('/students/me/available-exams')
+  return unwrap(res.data)
+}
+
+// ── Exam autosave / draft restore ────────────────────────────────
+
+export async function autosaveExamAnswers(examId: string, answers: AnswerInput[]): Promise<void> {
+  await apiClient.post(`/exams/${examId}/autosave`, { answers })
+}
+
+export async function getExamDraft(examId: string): Promise<ExamDraftResponse> {
+  const res = await apiClient.get<Envelope<ExamDraftResponse>>(`/exams/${examId}/draft`)
+  return unwrap(res.data)
+}
+
+// ── Exam list (teacher) ────────────────────────────────────────────
+
+export interface ExamListItem {
+  examId: string
+  title: string
+  subjectCode: string
+  gradeLevel: number
+  status: ExamStatusValue
+  examScope: ExamScope
+  totalMarks: number
+  questionCount: number
+  submissionCount?: number
+  createdAt: string
+}
+
+export interface ExamListResponse {
+  items: ExamListItem[]
+  meta: PaginationMeta
+}
+
+export async function listExams(page = 1, limit = 20): Promise<ExamListResponse> {
+  const res = await apiClient.get<Envelope<ExamListItem[]>>('/exams', { params: { page, limit } })
+  if (!res.data.success || res.data.data === undefined) {
+    throw new Error(res.data.error || 'Request failed')
+  }
+  return { items: res.data.data, meta: res.data.meta as PaginationMeta }
+}
+
+export async function closeExam(examId: string): Promise<{ status: string; message: string }> {
+  const res = await apiClient.post<Envelope<{ status: string; message: string }>>(`/exams/${examId}/close`)
+  return unwrap(res.data)
+}
+
+// ── All students (admin) ───────────────────────────────────────────
+
+export interface StudentListItem {
+  id: string
+  user_id: string
+  school_id: string
+  admission_no: string
+  grade_level: number
+  full_name?: string
+  email?: string
+  created_at: string
+}
+
+export interface StudentListResponse {
+  items: StudentListItem[]
+  meta: PaginationMeta
+}
+
+export async function listAllStudents(params?: { school_id?: string; grade_level?: number; page?: number; limit?: number }): Promise<StudentListResponse> {
+  const res = await apiClient.get<Envelope<StudentListItem[]>>('/students', { params: { limit: 50, ...params } })
+  if (!res.data.success || res.data.data === undefined) {
+    throw new Error(res.data.error || 'Request failed')
+  }
+  return { items: res.data.data, meta: res.data.meta as PaginationMeta }
+}
+
+// ── All teachers (admin) ────────────────────────────────────────────
+
+export interface TeacherListItem {
+  id: string
+  user_id: string
+  school_id: string
+  subject_specialty?: string
+  full_name?: string
+  email?: string
+  created_at: string
+}
+
+export interface TeacherListResponse {
+  items: TeacherListItem[]
+  meta: PaginationMeta
+}
+
+export async function listAllTeachers(params?: { school_id?: string; page?: number; limit?: number }): Promise<TeacherListResponse> {
+  const res = await apiClient.get<Envelope<TeacherListItem[]>>('/teachers', { params: { limit: 50, ...params } })
+  if (!res.data.success || res.data.data === undefined) {
+    throw new Error(res.data.error || 'Request failed')
+  }
+  return { items: res.data.data, meta: res.data.meta as PaginationMeta }
+}
+
+// ── Reports (async generation) ──────────────────────────────────────
+
+export type ReportType = 'school_monthly' | 'national_heatmap' | 'clo_coverage'
+export type ReportStatus = 'pending' | 'running' | 'ready' | 'failed'
+
+export interface ReportItem {
+  id: string
+  reportType: ReportType
+  status: ReportStatus
+  params?: Record<string, unknown>
+  requestedBy?: string
+  generatedAt?: string
+  createdAt: string
+}
+
+export interface GenerateReportRequest {
+  reportType: ReportType
+  params?: Record<string, unknown>
+}
+
+export async function generateReport(payload: GenerateReportRequest): Promise<ReportItem> {
+  const res = await apiClient.post<Envelope<ReportItem>>('/reports/generate', payload)
+  return unwrap(res.data)
+}
+
+export async function getReport(reportId: string): Promise<ReportItem> {
+  const res = await apiClient.get<Envelope<ReportItem>>(`/reports/${reportId}`)
+  return unwrap(res.data)
+}
+
+export async function listReports(): Promise<ReportItem[]> {
+  const res = await apiClient.get<Envelope<ReportItem[]>>('/reports')
+  return unwrap(res.data)
+}
+
+// ── CLO resync ─────────────────────────────────────────────────────
+
+export async function resyncClos(): Promise<{ synced: number; failed: number }> {
+  const res = await apiClient.post<Envelope<{ synced: number; failed: number }>>('/curriculum/clos/resync')
+  return unwrap(res.data)
+}
+
+// ── Account settings ───────────────────────────────────────────────
+
+export async function changePassword(payload: {
+  currentPassword: string
+  newPassword: string
+}): Promise<void> {
+  await apiClient.post('/auth/change-password', payload)
 }

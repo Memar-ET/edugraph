@@ -99,24 +99,88 @@ func (s *Service) ValidateExam(ctx context.Context, userID, examID uuid.UUID) (*
 	if err := s.repo.SaveValidationReport(ctx, examID, reportJSON); err != nil {
 		return nil, apperrors.Internal(err)
 	}
+	s.repo.RecordAuditAction(ctx, "exam.validate", "exam", examID.String())
 
 	return report, nil
 }
 
-// PublishExam only succeeds once the exam has been validated at least once
-// (status 'validation_pending'). Not blocked by report content -- a
-// warning system, not a hard quality gate; the teacher decides.
+// PublishExam only succeeds once the exam has been validated at least
+// once (status 'validation_pending') AND passes the hard structural
+// check below. The curriculum/psychometric report ValidateExam produces
+// stays advisory by design (a teacher can publish despite CLO-coverage
+// warnings or an unbalanced Bloom distribution -- pedagogical judgment
+// calls, not correctness bugs). Structural validity is different: a
+// missing answer key or a question with no valid correct option is not
+// a judgment call, it's a broken exam that would corrupt every
+// student's grade, so it hard-blocks regardless of the soft report.
 func (s *Service) PublishExam(ctx context.Context, userID, examID uuid.UUID) (*dto.PublishResponse, error) {
 	if err := s.verifyCallerOwnsExam(ctx, userID, examID); err != nil {
 		return nil, err
 	}
+
+	questions, err := s.repo.FetchQuestionsForGrading(ctx, examID)
+	if err != nil {
+		return nil, apperrors.Internal(err)
+	}
+	if problems := validateExamStructure(questions); len(problems) > 0 {
+		return nil, apperrors.BadRequest("exam cannot be published: " + strings.Join(problems, "; "))
+	}
+
 	if err := s.repo.PublishExam(ctx, examID); err != nil {
 		if errors.Is(err, repository.ErrNotValidated) {
 			return nil, apperrors.Conflict("exam must be validated (POST .../validate) before it can be published")
 		}
 		return nil, apperrors.Internal(err)
 	}
+	s.repo.RecordAuditAction(ctx, "exam.publish", "exam", examID.String())
 	return &dto.PublishResponse{ExamID: examID, Status: "published"}, nil
+}
+
+// validateExamStructure is the hard, non-negotiable pre-publish gate
+// (Part 34): every problem found is reported, not just the first, so a
+// teacher can fix everything in one pass instead of one publish-attempt
+// per bug.
+func validateExamStructure(questions []repository.QuestionForGrading) []string {
+	var problems []string
+	if len(questions) == 0 {
+		return []string{"exam has no questions"}
+	}
+	for _, q := range questions {
+		label := fmt.Sprintf("question %d", q.SequenceNumber)
+		if strings.TrimSpace(q.QuestionText) == "" {
+			problems = append(problems, label+": question text is empty")
+		}
+		if q.Marks <= 0 {
+			problems = append(problems, label+": marks must be greater than zero")
+		}
+		if q.QuestionType != "mcq" {
+			continue
+		}
+		if len(q.Options) < 2 {
+			problems = append(problems, label+": mcq must have at least 2 options")
+			continue
+		}
+		seenLetters := make(map[string]bool, len(q.Options))
+		for _, o := range q.Options {
+			if seenLetters[o.Letter] {
+				problems = append(problems, fmt.Sprintf("%s: duplicate option letter %q", label, o.Letter))
+			}
+			seenLetters[o.Letter] = true
+		}
+		if q.AnswerKey == nil {
+			problems = append(problems, label+": mcq has no answer key")
+			continue
+		}
+		correct, ok := q.AnswerKey["correctOption"]
+		if !ok || strings.TrimSpace(correct) == "" {
+			problems = append(problems, label+": answer key has no correct option set")
+			continue
+		}
+		if !seenLetters[correct] {
+			problems = append(problems, fmt.Sprintf("%s: answer key's correct option %q doesn't match any option on this question", label, correct))
+		}
+	}
+	return problems
 }
 
 func describeScope(examScope string, unitNumbers []int) string {

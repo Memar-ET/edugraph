@@ -70,6 +70,7 @@ func (s *Service) UploadExam(
 	if err != nil {
 		return nil, fmt.Errorf("create exam record failed: %w", err)
 	}
+	s.repo.RecordAuditAction(ctx, "exam.upload", "exam", examID.String())
 
 	// Non-fatal: mirrors curriculum's queue push -- the exam row exists at
 	// status 'pending' even if this fails.
@@ -84,7 +85,37 @@ func (s *Service) UploadExam(
 	}, nil
 }
 
+// GetExam serves two different callers with two different authorization
+// rules, previously conflated into one teacher-only check that made this
+// endpoint unusable by students at all -- PreExamPage (the exam
+// instructions/confirmation screen, Part 24) called this and got a
+// blanket 403 for every student, in production, before this fix.
+//
+// A student profile existing for userID is what selects the student
+// path: verifyStudentAccess's rules (exam must be status='published',
+// student's own school/grade must match) rather than
+// verifyCallerOwnsExam's (same-school teacher/school_admin, no
+// publish-status requirement -- correct for managing an exam, but would
+// let a student view a draft/unpublished exam's metadata if reused here,
+// exactly what Part 2 says must never happen). ValidationReport is
+// teacher-internal QA data (discrimination/CLO-coverage warnings), never
+// student-facing, so it's stripped on the student path.
 func (s *Service) GetExam(ctx context.Context, userID, examID uuid.UUID) (*dto.ExamStatus, error) {
+	if _, err := s.repo.FetchStudentProfile(ctx, userID); err == nil {
+		if _, _, err := s.verifyStudentAccess(ctx, userID, examID); err != nil {
+			return nil, err
+		}
+		exam, err := s.repo.GetExam(ctx, examID)
+		if errors.Is(err, repository.ErrNotFound) || errors.Is(err, pgx.ErrNoRows) {
+			return nil, apperrors.NotFound("exam not found")
+		}
+		if err != nil {
+			return nil, apperrors.Internal(err)
+		}
+		exam.ValidationReport = nil
+		return exam, nil
+	}
+
 	if err := s.verifyCallerOwnsExam(ctx, userID, examID); err != nil {
 		return nil, err
 	}

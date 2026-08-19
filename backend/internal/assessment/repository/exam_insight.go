@@ -49,7 +49,8 @@ func (r *Repository) fetchGapRecords(ctx context.Context, attemptID uuid.UUID) (
 	const q = `
 		SELECT g.question_id, g.topic_id, st.title_en, g.clo_code,
 		       g.root_cause_topic_id, rt.title_en, rt.grade_level,
-		       g.severity_score, g.prerequisite_depth, g.llm_explanation
+		       g.severity_score, g.prerequisite_depth, g.llm_explanation,
+		       g.rcs_score, g.rcs_factors::text, g.root_cause_path::text
 		FROM students.gap_records g
 		JOIN curriculum.topics st ON st.id = g.topic_id
 		LEFT JOIN curriculum.topics rt ON rt.id = g.root_cause_topic_id
@@ -69,6 +70,7 @@ func (r *Repository) fetchGapRecords(ctx context.Context, attemptID uuid.UUID) (
 			&g.QuestionID, &g.SymptomTopicID, &g.SymptomTopicTitle, &g.CloCode,
 			&g.RootCauseTopicID, &g.RootCauseTopicTitle, &g.RootCauseGrade,
 			&g.SeverityScore, &g.PrerequisiteDepth, &g.LlmExplanation,
+			&g.RcsScore, &g.RcsFactors, &g.RootCausePath,
 		); err != nil {
 			return nil, fmt.Errorf("scan gap record: %w", err)
 		}

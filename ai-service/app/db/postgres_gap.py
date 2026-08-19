@@ -47,11 +47,14 @@ async def fetch_missed_answers(attempt_id: str) -> list[asyncpg.Record]:
     """Every graded answer on the attempt that lost marks (missed or
     partially right). Ungraded answers (marks_awarded IS NULL) are
     excluded -- the attempt shouldn't have been queued with any, but a
-    re-grade can transiently unfinalize one."""
+    re-grade can transiently unfinalize one. answer_text is included for
+    the EG-GCKT misconception-hypothesis generator (Milestone 6), which
+    needs to see what the student actually wrote, not just that they lost
+    marks -- everything else here is unchanged from before that feature."""
     pool = await get_pool()
     return await pool.fetch(
         """
-        SELECT sa.question_id, sa.marks_awarded, sa.marks_possible,
+        SELECT sa.question_id, sa.marks_awarded, sa.marks_possible, sa.answer_text,
                q.sequence_number, q.question_text, q.question_type,
                q.clo_code, q.topic_id
         FROM assessment.student_answers sa
@@ -125,6 +128,36 @@ async def fetch_prerequisite_chain_pg(topic_id: str, max_depth: int = 3) -> list
         {"id": str(r["id"]), "title": r["title_en"], "grade_level": r["grade_level"], "depth": r["depth"]}
         for r in rows
     ]
+
+
+async def fetch_downstream_dependents_pg(topic_id: str, max_depth: int = 3) -> list[dict]:
+    """Postgres fallback for the EG-GCKT root-cause engine's
+    DownstreamImpact factor (spec section 9): every topic that has
+    topic_id somewhere in ITS OWN upstream prerequisite chain -- the
+    reverse direction of fetch_prerequisite_chain_pg. Restricted to
+    edge_type IN ('requires', 'strongly_requires') for the same reason
+    class_heatmap.py's Neo4j walk is (Milestone 0): only hard-dependency
+    edges represent a real "fixing this unlocks that" chain, not
+    similar_to/related_to associations."""
+    pool = await get_pool()
+    rows = await pool.fetch(
+        """
+        WITH RECURSIVE chain AS (
+            SELECT tp.topic_id AS dependent_id, 1 AS depth
+            FROM curriculum.topic_prerequisites tp
+            WHERE tp.prerequisite_id = $1 AND tp.edge_type IN ('requires', 'strongly_requires')
+            UNION
+            SELECT tp.topic_id AS dependent_id, c.depth + 1
+            FROM curriculum.topic_prerequisites tp
+            JOIN chain c ON tp.prerequisite_id = c.dependent_id
+            WHERE c.depth < $2 AND tp.edge_type IN ('requires', 'strongly_requires')
+        )
+        SELECT dependent_id AS id, min(depth) AS depth FROM chain GROUP BY dependent_id
+        """,
+        topic_id,
+        max_depth,
+    )
+    return [{"id": str(r["id"]), "depth": r["depth"]} for r in rows]
 
 
 async def fetch_topic_mastery(student_id: str, topic_ids: list[str]) -> dict[str, float]:
@@ -260,8 +293,9 @@ async def persist_analysis(
                     INSERT INTO students.gap_records
                         (student_id, school_id, topic_id, clo_code, severity_score,
                          is_root_cause, prerequisite_depth, detected_in_exam,
-                         attempt_id, question_id, root_cause_topic_id, llm_explanation)
-                    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+                         attempt_id, question_id, root_cause_topic_id, llm_explanation,
+                         rcs_score, rcs_factors, root_cause_path)
+                    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14::jsonb, $15::jsonb)
                     """,
                     [
                         (
@@ -277,6 +311,9 @@ async def persist_analysis(
                             g["question_id"],
                             g.get("root_cause_topic_id"),
                             g.get("llm_explanation"),
+                            g.get("rcs_score"),
+                            json.dumps(g["rcs_factors"]) if g.get("rcs_factors") is not None else None,
+                            json.dumps(g["root_cause_path"]) if g.get("root_cause_path") is not None else None,
                         )
                         for g in gaps
                     ],
@@ -352,3 +389,158 @@ async def persist_analysis(
                 subject_agg["mastery_pct"],
                 json.dumps(subject_agg["weak_areas"]),
             )
+
+
+async def fetch_all_attempt_answers(attempt_id: str) -> list[asyncpg.Record]:
+    """Every graded answer on the attempt -- not just missed ones, unlike
+    fetch_missed_answers -- since a CORRECT answer to a misconception's
+    verification item is exactly the "weakens this hypothesis" signal
+    check_verification_responses needs to see."""
+    pool = await get_pool()
+    return await pool.fetch(
+        """
+        SELECT question_id, (marks_awarded >= marks_possible * 0.5) AS correct
+        FROM assessment.student_answers
+        WHERE attempt_id = $1 AND marks_awarded IS NOT NULL AND marks_possible > 0
+        """,
+        attempt_id,
+    )
+
+
+async def select_verification_item(topic_id: str, exclude_question_ids: list[str]) -> Optional[str]:
+    """A question mapped to this topic the student hasn't already
+    answered (so it's genuinely diagnostic, not something already known)
+    -- 'use diagnostic items to actively verify important hypotheses'
+    (spec section 12). Returns None (never fabricates one) when no such
+    item exists yet."""
+    pool = await get_pool()
+    row = await pool.fetchrow(
+        """
+        SELECT m.question_id
+        FROM assessment.item_skill_mappings m
+        WHERE m.topic_id = $1 AND m.is_current AND NOT (m.question_id = ANY($2::uuid[]))
+        ORDER BY m.relevance DESC
+        LIMIT 1
+        """,
+        topic_id,
+        exclude_question_ids,
+    )
+    return str(row["question_id"]) if row else None
+
+
+async def fetch_candidate_misconception(student_id: str, topic_id: str) -> Optional[asyncpg.Record]:
+    """The existing candidate hypothesis for this (student, topic), if
+    one exists -- checked before creating a new one so a second repeated-
+    failure pattern on the same topic accumulates evidence onto the
+    existing hypothesis instead of spawning a duplicate."""
+    pool = await get_pool()
+    return await pool.fetchrow(
+        """
+        SELECT id, confidence, supporting_evidence, verification_item_id
+        FROM students.misconception_hypotheses
+        WHERE student_id = $1 AND topic_id = $2 AND status = 'candidate'
+        ORDER BY created_at DESC LIMIT 1
+        """,
+        student_id,
+        topic_id,
+    )
+
+
+async def append_misconception_evidence(hypothesis_id: str, new_answers: list[dict[str, Any]]) -> None:
+    """Appends more wrong-answer evidence to an existing candidate
+    hypothesis's supporting_evidence.answers array -- 'track evidence
+    supporting or weakening a misconception hypothesis' (spec section
+    12). Only touches 'candidate' rows; a confirmed/rejected hypothesis
+    is a closed record a teacher has already decided on."""
+    pool = await get_pool()
+    await pool.execute(
+        """
+        UPDATE students.misconception_hypotheses
+        SET supporting_evidence = jsonb_set(
+            COALESCE(supporting_evidence, '{"answers": []}'::jsonb),
+            '{answers}',
+            COALESCE(supporting_evidence -> 'answers', '[]'::jsonb) || $2::jsonb
+        )
+        WHERE id = $1 AND status = 'candidate'
+        """,
+        hypothesis_id,
+        json.dumps(new_answers),
+    )
+
+
+async def fetch_active_verification_items(student_id: str) -> list[asyncpg.Record]:
+    """Every candidate hypothesis for this student that has a
+    verification item assigned -- checked against each newly-graded
+    answer (spec: "use diagnostic items to actively verify important
+    hypotheses")."""
+    pool = await get_pool()
+    return await pool.fetch(
+        """
+        SELECT id, verification_item_id, confidence
+        FROM students.misconception_hypotheses
+        WHERE student_id = $1 AND status = 'candidate' AND verification_item_id IS NOT NULL
+        """,
+        student_id,
+    )
+
+
+async def adjust_misconception_confidence(hypothesis_id: str, delta: float, note: str) -> None:
+    """Nudges a candidate hypothesis's confidence up (verification item
+    also missed -- strengthens it) or down (verification item answered
+    correctly -- weakens it), clamped to [0, 1]. 'Update misconception
+    state after intervention outcomes' (spec section 12) -- this is the
+    passive/observational version (a verification item just happened to
+    be answered), not a teacher-initiated intervention outcome."""
+    pool = await get_pool()
+    await pool.execute(
+        """
+        UPDATE students.misconception_hypotheses
+        SET confidence = GREATEST(0, LEAST(1, COALESCE(confidence, 0.5) + $2)),
+            trigger_pattern = COALESCE(trigger_pattern, '') || CASE WHEN trigger_pattern IS NULL THEN '' ELSE ' | ' END || $3
+        WHERE id = $1 AND status = 'candidate'
+        """,
+        hypothesis_id,
+        delta,
+        note,
+    )
+
+
+async def insert_misconception_hypothesis(
+    *,
+    student_id: str,
+    school_id: str,
+    topic_id: str,
+    misconception_text: str,
+    trigger_pattern: Optional[str],
+    supporting_evidence: dict[str, Any],
+    confidence: float,
+    intervention_text: Optional[str],
+    generated_by_model: Optional[str],
+    verification_item_id: Optional[str] = None,
+) -> str:
+    """Persists one candidate misconception hypothesis (EG-GCKT Milestone
+    6, spec section 11). Always inserted as status='candidate' -- this
+    function never sets status='confirmed'; that only happens via a
+    teacher reviewing it through the Go endpoint
+    (assessment/handler/misconceptions.go)."""
+    pool = await get_pool()
+    row = await pool.fetchrow(
+        """
+        INSERT INTO students.misconception_hypotheses
+            (student_id, school_id, topic_id, misconception_text, trigger_pattern,
+             supporting_evidence, confidence, intervention_text, generated_by_model, verification_item_id)
+        VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7, $8, $9, $10)
+        RETURNING id
+        """,
+        student_id,
+        school_id,
+        topic_id,
+        misconception_text,
+        trigger_pattern,
+        json.dumps(supporting_evidence),
+        confidence,
+        intervention_text,
+        generated_by_model,
+        verification_item_id,
+    )
+    return str(row["id"])

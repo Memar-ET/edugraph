@@ -4,16 +4,37 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 
 from app.api.v1.routes import career as career_routes
+from app.api.v1.routes import insights as insights_routes
 from app.api.v1.routes import tutor as tutor_routes
 from app.core.logging import configure_logging
 from app.db.neo4j import close_neo4j
 from app.db.postgres import close_pool
 from app.db.redis import close_redis
-from app.workers import answer_key_worker, curriculum_worker, embed_worker, exam_worker, gap_worker, study_plan_worker
+from app.workers import (
+    answer_key_worker,
+    curriculum_worker,
+    embed_worker,
+    exam_worker,
+    gap_worker,
+    kt_worker,
+    refit_worker,
+    report_worker,
+    study_plan_worker,
+)
 
 logger = configure_logging()
 
-WORKERS = (curriculum_worker, exam_worker, answer_key_worker, gap_worker, study_plan_worker, embed_worker)
+WORKERS = (
+    curriculum_worker,
+    exam_worker,
+    answer_key_worker,
+    gap_worker,
+    study_plan_worker,
+    embed_worker,
+    kt_worker,
+    refit_worker,
+    report_worker,
+)
 
 
 @asynccontextmanager
@@ -47,6 +68,7 @@ app = FastAPI(lifespan=lifespan)
 
 app.include_router(tutor_routes.router)
 app.include_router(career_routes.router)
+app.include_router(insights_routes.router)
 
 
 @app.get("/")

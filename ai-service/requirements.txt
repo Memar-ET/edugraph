@@ -10,8 +10,19 @@ llama-index==0.10.50
 
 huggingface-hub==0.23.4
 
-# Local (offline-capable) embedding model runner -- ONNX + onnxruntime under
-# the hood, CPU-only, no torch/GPU dependency. See app/utils/embeddings.py.
+# CPU-only PyTorch build -- this stack has no GPU anywhere (Ollama and
+# sentence-transformers both run CPU inference here), but the default
+# PyPI torch wheel pulls in ~2GB of unused NVIDIA CUDA libraries
+# (nvidia-cublas, nvidia-cudnn, nvidia-cufft, etc.) as transitive
+# dependencies of sentence-transformers below. Pinning the +cpu build
+# explicitly (via PyTorch's own CPU wheel index) avoids downloading any
+# of that.
+--extra-index-url https://download.pytorch.org/whl/cpu
+torch==2.9.1+cpu
+
+# Local (offline-capable) embedding model runner -- SentenceTransformer (intfloat/multilingual-e5-large)
+# and fastembed (ONNX). See app/utils/embeddings.py.
+sentence-transformers>=3.0.0
 fastembed==0.8.0
 
 # Database clients
